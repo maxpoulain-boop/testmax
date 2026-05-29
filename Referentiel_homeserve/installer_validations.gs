@@ -166,7 +166,6 @@ function installer_TRANSFERTS_(ss, logs) {
         SpreadsheetApp.newDataValidation()
           .requireValueInRange(sourceRange, true)
           .setAllowInvalid(true)
-          .setHelpText('Choisissez parmi les commerciaux de la filiale sélectionnée (colonne A).')
           .build()
       ]);
     }
