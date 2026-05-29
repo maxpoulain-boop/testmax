@@ -635,8 +635,20 @@ function protegerFeuillesReference() {
     count++;
   });
 
+  // PARAMETRES : source de toutes les listes déroulantes. On la protège en
+  // AVERTISSEMENT (et non en blocage), pour ne pas verrouiller l'administrateur
+  // qui doit encore l'ajuster, tout en évitant les modifications accidentelles.
+  const params = ss.getSheetByName('PARAMETRES');
+  if (params) {
+    params.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(p => p.remove());
+    params.protect()
+      .setDescription('PARAMETRES — source des listes déroulantes. Modifier avec précaution.')
+      .setWarningOnly(true);
+    count++;
+  }
+
   SpreadsheetApp.getActive().toast(
-    count + ' feuille(s) protégée(s) : ' + feuillesAProteger.filter(n => ss.getSheetByName(n)).join(', '),
+    count + ' feuille(s) protégée(s) : ' + feuillesAProteger.filter(n => ss.getSheetByName(n)).concat(params ? ['PARAMETRES (avertissement)'] : []).join(', '),
     '✓ Protection appliquée',
     6
   );

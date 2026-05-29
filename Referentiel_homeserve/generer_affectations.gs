@@ -60,7 +60,7 @@ function creerFeuilleSaisie() {
 
   const entetes = ['Filiale', 'Commercial', 'Type zone', 'Zone', 'Produits', 'Commentaire'];
   sheet.getRange(1, 1, 1, entetes.length).setValues([entetes])
-    .setFontWeight('bold').setBackground('#0b5394').setFontColor('#ffffff');
+    .setFontWeight('bold').setBackground('#E22C22').setFontColor('#ffffff');
   sheet.setFrozenRows(1);
 
   // Exemples explicatifs
@@ -138,6 +138,29 @@ function parseProduits_(cell, tousProduits) {
   return txt.split(/[,;\n\r]+/).map(s => s.trim()).filter(s => s !== '');
 }
 
+/**
+ * Carte filiale → ensemble des commerciaux connus, lue depuis
+ * _COMMERCIAUX_PAR_FILIALE_H (col A = filiale, col B+ = commerciaux).
+ * Sert à détecter les fautes de frappe dans SAISIE_SECTEURS.
+ */
+function commerciauxConnus_(ss) {
+  const sh = ss.getSheetByName('_COMMERCIAUX_PAR_FILIALE_H');
+  const carte = {};            // filiale → { nomNorm: nomAffiche }
+  if (!sh) return carte;
+  const data = sh.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const filiale = String(data[i][0] || '').trim();
+    if (!filiale) continue;
+    const ens = {};
+    for (let j = 1; j < data[i].length; j++) {
+      const nom = String(data[i][j] || '').trim();
+      if (nom) ens[nom.toUpperCase()] = nom;
+    }
+    carte[filiale] = ens;
+  }
+  return carte;
+}
+
 // ============================================================
 // 3. GÉNÉRATION
 // ============================================================
@@ -172,17 +195,24 @@ function genererAffectations() {
   const regles = saisie.getRange(2, 1, derniere - 1, 6).getValues();
 
   const tousProduits = listeProduits_(ss);
+  const refCommerciaux = commerciauxConnus_(ss);
 
   // Accumulateurs
   // communes : clé "cp|villeNorm" → { cp, ville, region, commerciaux: [{nom, filiale}] }
   const communes = {};
   const produitsSet = {}; // clé "filiale|commercial|produit" → true
-  const rapport = { regles: 0, sansMatch: [], sansProduit: [], lignesIgnorees: 0 };
+  const rapport = { regles: 0, sansMatch: [], sansProduit: [], lignesIgnorees: 0, inconnus: [] };
 
   for (let r = 0; r < regles.length; r++) {
     const [filiale, commercial, typeZone, zone, produitsCell] = regles[r];
     if (!filiale || !commercial) { rapport.lignesIgnorees++; continue; }
     rapport.regles++;
+
+    // Garde-fou : commercial absent du référentiel de la filiale → faute de frappe probable
+    const ensFiliale = refCommerciaux[String(filiale).trim()];
+    if (ensFiliale && !ensFiliale[String(commercial).trim().toUpperCase()]) {
+      rapport.inconnus.push(commercial + ' (' + filiale + ')');
+    }
 
     const type = String(typeZone || 'CP').trim().toUpperCase();
     let nbCommunes = 0;
@@ -250,25 +280,54 @@ function genererAffectations() {
     return [filiale, commercial, produit, 'Oui', '', '', GEN.MARQUEUR];
   });
 
+  // --- Comptage des lignes manuelles qui seront préservées (pour l'aperçu) ---
+  const manuAffect = compterLignesManuelles_(affectSheet, GEN.AFFECT_COLS, GEN.AFFECT_ORIGINE);
+  const manuProduits = compterLignesManuelles_(produitsSheet, GEN.PRODUITS_COLS, GEN.PRODUITS_ORIGINE);
+
+  // --- Garde-fou n°1 : aperçu + confirmation AVANT toute écriture ---
+  const apercu = [];
+  apercu.push('AVANT d\'écrire, vérifiez ce résumé :');
+  apercu.push('');
+  apercu.push('• Règles traitées : ' + rapport.regles + (rapport.lignesIgnorees ? ' (' + rapport.lignesIgnorees + ' ignorée(s), filiale/commercial vide)' : ''));
+  apercu.push('• Communes couvertes : ' + Object.keys(communes).length);
+  apercu.push('• AFFECTATIONS : ' + lignesAffect.length + ' lignes générées remplacées' + (manuAffect ? ' (' + manuAffect + ' lignes manuelles conservées)' : ''));
+  apercu.push('• PRODUITS : ' + lignesProduits.length + ' lignes générées remplacées' + (manuProduits ? ' (' + manuProduits + ' lignes manuelles conservées)' : ''));
+  apercu.push('');
+  if (rapport.inconnus.length) apercu.push('⚠ Commerciaux INCONNUS du référentiel (faute de frappe ?) : ' + rapport.inconnus.slice(0, 15).join(', ') + (rapport.inconnus.length > 15 ? '…' : ''));
+  if (rapport.sansMatch.length) apercu.push('⚠ Aucune commune trouvée pour : ' + rapport.sansMatch.slice(0, 15).join(', ') + (rapport.sansMatch.length > 15 ? '…' : ''));
+  if (rapport.sansProduit.length) apercu.push('⚠ Aucun produit renseigné pour : ' + rapport.sansProduit.slice(0, 15).join(', ') + (rapport.sansProduit.length > 15 ? '…' : ''));
+  if (conflitsMultiFiliale.length) apercu.push('⚠ Communes partagées entre filiales : ' + conflitsMultiFiliale.slice(0, 15).join(', ') + (conflitsMultiFiliale.length > 15 ? '…' : ''));
+  apercu.push('');
+  apercu.push('Les lignes « généré » existantes seront remplacées. Continuer ?');
+
+  const choix = ui.alert('Confirmer la génération', apercu.join('\n'), ui.ButtonSet.YES_NO);
+  if (choix !== ui.Button.YES) {
+    ss.toast('Génération annulée — aucune modification.', 'Annulé', 5);
+    return;
+  }
+
   // --- Écriture (en préservant les lignes manuelles) ---
   ss.toast('Écriture de ' + lignesAffect.length + ' affectations…', '⏳ Génération', -1);
   ecrireEnPreservantManuel_(affectSheet, lignesAffect, GEN.AFFECT_COLS, GEN.AFFECT_ORIGINE, 'Origine');
   ecrireEnPreservantManuel_(produitsSheet, lignesProduits, GEN.PRODUITS_COLS, GEN.PRODUITS_ORIGINE, 'Origine');
 
-  // --- Rapport ---
-  const lignes = [];
-  lignes.push('Règles traitées : ' + rapport.regles + (rapport.lignesIgnorees ? ' (' + rapport.lignesIgnorees + ' ligne(s) ignorée(s), filiale/commercial vide)' : ''));
-  lignes.push('Communes couvertes : ' + Object.keys(communes).length);
-  lignes.push('Lignes AFFECTATIONS générées : ' + lignesAffect.length);
-  lignes.push('Lignes PRODUITS générées : ' + lignesProduits.length);
-  lignes.push('');
-  if (rapport.sansMatch.length) lignes.push('⚠ Aucune commune trouvée pour : ' + rapport.sansMatch.join(', '));
-  if (rapport.sansProduit.length) lignes.push('⚠ Aucun produit renseigné pour : ' + rapport.sansProduit.join(', '));
-  if (conflitsMultiFiliale.length) lignes.push('⚠ Communes partagées entre filiales différentes : ' + conflitsMultiFiliale.slice(0, 20).join(', ') + (conflitsMultiFiliale.length > 20 ? '…' : ''));
-  if (!rapport.sansMatch.length && !rapport.sansProduit.length && !conflitsMultiFiliale.length) lignes.push('✓ Aucun avertissement.');
-
   ss.toast('Terminé', '✓ Génération', 5);
-  ui.alert('Génération terminée', lignes.join('\n'), ui.ButtonSet.OK);
+  ui.alert('Génération terminée',
+    lignesAffect.length + ' affectations et ' + lignesProduits.length + ' produits écrits.\n\n' +
+    'Rappel : pour corriger une ligne « généré », modifiez la RÈGLE dans ' + GEN.SAISIE +
+    ' puis relancez la génération — ne modifiez pas la ligne à la main (elle serait écrasée).',
+    ui.ButtonSet.OK);
+}
+
+/** Compte les lignes manuelles (non vides, Origine ≠ "généré") d'une feuille. */
+function compterLignesManuelles_(sheet, nbCols, colOrigine) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const data = sheet.getRange(2, 1, last - 1, colOrigine).getValues();
+  return data.filter(row => {
+    const vide = row.slice(0, nbCols).every(v => v === '' || v === null);
+    return !vide && row[colOrigine - 1] !== GEN.MARQUEUR;
+  }).length;
 }
 
 /** Ajoute un commercial à une commune (dédup commercial). Retourne 1 si nouvelle commune. */
@@ -295,10 +354,15 @@ function ajouterCommune_(communes, dptRow, carteReg, filiale, commercial) {
  * et en remplaçant les lignes générées par le nouveau lot.
  */
 function ecrireEnPreservantManuel_(sheet, lignesGenerees, nbCols, colOrigine, titreOrigine) {
-  // S'assure que l'en-tête de la colonne Origine existe
-  if (!sheet.getRange(1, colOrigine).getValue()) {
-    sheet.getRange(1, colOrigine).setValue(titreOrigine).setFontWeight('bold');
+  // S'assure que l'en-tête de la colonne Origine existe (+ note d'avertissement)
+  const enteteOrigine = sheet.getRange(1, colOrigine);
+  if (!enteteOrigine.getValue()) {
+    enteteOrigine.setValue(titreOrigine).setFontWeight('bold');
   }
+  enteteOrigine.setNote(
+    'Ne pas modifier à la main les lignes « généré » : elles sont écrasées à chaque ' +
+    'génération. Pour corriger, modifiez la règle dans SAISIE_SECTEURS puis relancez ' +
+    '⚙️ Transferts → Générer les affectations.');
 
   const last = sheet.getLastRow();
   let manuelles = [];
