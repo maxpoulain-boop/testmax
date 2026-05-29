@@ -290,7 +290,7 @@
       <div class="step-num">2</div>
       <div class="step-content">
         <strong>Coller les 3 scripts</strong>
-        Créer (ou remplacer) les fichiers <code>notifications_transferts</code>, <code>installer_validations</code>, <code>notes_helper</code> avec le contenu du dépôt GitHub. Sauvegarder.
+        Créer (ou remplacer) les fichiers <code>notifications_transferts</code>, <code>installer_validations</code>, <code>notes_helper</code> et <code>generer_affectations</code> avec le contenu du dépôt GitHub. Sauvegarder.
       </div>
     </div>
     <div class="step">
@@ -415,6 +415,66 @@
     <li>Ajouter le nom dans la première colonne vide</li>
     <li>Relancer "Installer les listes déroulantes" pour que la cascade se mette à jour</li>
   </ol>
+
+
+  <h2>Peupler les affectations en masse (génération par règles)</h2>
+
+  <p>Plutôt que de saisir à la main les ~9 300 lignes d'<code>AFFECTATIONS_COMMUNES</code>,
+  on décrit <strong>une règle par commercial</strong> et un script déplie ces règles
+  contre <code>DPT_SOURCE</code> (35 000 communes).</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <strong>Créer la feuille de saisie</strong>
+        <span class="menu-path">⚙️ Transferts → Créer la feuille de saisie (secteurs)</span><br>
+        Un onglet <code>SAISIE_SECTEURS</code> est créé avec deux lignes d'exemple et les listes déroulantes.
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <strong>Saisir une ligne par commercial</strong>
+        Colonnes : <code>Filiale</code>, <code>Commercial</code>, <code>Type zone</code>, <code>Zone</code>, <code>Produits</code>.
+        <ul>
+          <li><strong>Type CP</strong> : même syntaxe que la colonne CP des TRANSFERTS — <code>33000</code>, <code>33000, 47000</code>, <code>33000-33999</code>, mix, ou <code>Tous</code>.</li>
+          <li><strong>Type COMMUNES</strong> : liste de noms de communes séparés par des virgules (pour les filiales gérées commune par commune).</li>
+          <li><strong>Produits</strong> : liste séparée par des virgules, ou <code>Tous</code> (= tous les produits de PARAMETRES C2:C25).</li>
+        </ul>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <strong>Générer</strong>
+        <span class="menu-path">⚙️ Transferts → Générer les affectations depuis la saisie</span><br>
+        Le script remplit <code>AFFECTATIONS_COMMUNES</code> et <code>PRODUITS_COMMERCIAUX</code>, puis affiche un rapport.
+      </div>
+    </div>
+  </div>
+
+  <div class="alert alert-info">
+    <strong>Rôle déduit automatiquement :</strong> une commune avec un seul commercial →
+    <code>Principal</code> (Priorité 1) ; avec deux commerciaux ou plus → tous
+    <code>Co-affecté</code> (Priorité 2). Il suffit donc de saisir les deux commerciaux
+    sur les mêmes CP, le chevauchement est détecté.
+  </div>
+
+  <div class="alert alert-success">
+    <strong>Saisies manuelles préservées :</strong> une colonne <code>Origine</code> marque
+    les lignes générées (« généré »). Régénérer ne remplace que ces lignes-là — ce qui a
+    été saisi à la main reste intact. La génération est donc relançable filiale par filiale,
+    au fil des informations reçues.
+  </div>
+
+  <div class="alert alert-warning">
+    Le rapport signale : les règles <strong>sans commune trouvée</strong> (CP mal saisi),
+    les commerciaux <strong>sans produit</strong>, et les communes <strong>partagées entre
+    filiales différentes</strong> (à vérifier). Pour le Type COMMUNES, le rapprochement se
+    fait sur le nom (accents et casse ignorés) : si un nom diffère de la référence INSEE
+    (ex. <code>ST</code> vs <code>SAINT</code>), la commune n'est pas trouvée.
+  </div>
 
 
   <h2>Résoudre les problèmes courants</h2>

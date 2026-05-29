@@ -65,7 +65,7 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 
 1. Ouvrir le Google Sheet
 2. `Extensions → Apps Script`
-3. Créer/remplacer les 3 fichiers `.gs` avec le contenu de ce dépôt
+3. Créer/remplacer les 4 fichiers `.gs` avec le contenu de ce dépôt
 4. Sauvegarder → fermer et rouvrir le Sheet
 5. Le menu **⚙️ Transferts** apparaît dans le ruban
 6. **⚙️ Transferts → Installer les déclencheurs**
@@ -130,6 +130,15 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 Info-bulles au survol (TRANSFERTS colonnes B, C, I + RECHERCHE) :
 - `ajouterNotes` / `retirerNotes`
 
+### 4. `generer_affectations.gs`
+Génération en masse des affectations par règles (évite la saisie commune par commune) :
+- `creerFeuilleSaisie` : crée l'onglet `SAISIE_SECTEURS` (1 ligne par commercial :
+  Filiale, Commercial, Type zone `CP`/`COMMUNES`, Zone, Produits)
+- `genererAffectations` : déplie les règles contre `DPT_SOURCE` et remplit
+  `AFFECTATIONS_COMMUNES` + `PRODUITS_COMMERCIAUX`. Rôle déduit (1 commercial =
+  Principal, 2+ = Co-affecté). Colonne `Origine` = `généré` → les lignes manuelles
+  sont préservées à chaque régénération. Réutilise `CP_MATCH`. Rapport de conflits.
+
 ## Points d'attention récurrents
 
 1. **Listes déroulantes Excel ne survivent pas à l'import Google Sheets** → toujours relancer `installerToutesLesValidations` après import
@@ -151,4 +160,7 @@ Info-bulles au survol (TRANSFERTS colonnes B, C, I + RECHERCHE) :
 - `notifications_transferts.gs` : script principal
 - `installer_validations.gs` : script de récupération validations
 - `notes_helper.gs` : script info-bulles
+- `generer_affectations.gs` : génération des affectations par règles
+- `docs/guide_administrateur.html` : guide propriétaire (imprimable en PDF)
+- `docs/guide_utilisateur_transferts.html` : guide gestionnaires de transferts
 - `README.md` : ce fichier
