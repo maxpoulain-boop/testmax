@@ -80,7 +80,7 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 
 ### 1. `notifications_transferts.gs` (principal)
 - `onOpen` : crée le menu **⚙️ Transferts** dans le ruban
-- `onEdit` (déclencheur installable) : email à l'activation d'un transfert
+- `gererModificationActif` (déclencheur installable) : email à l'activation d'un transfert
 - `verifierRappelsQuotidiens` (déclencheur quotidien 7h) : email J-3 ouvrés
 - `CP_MATCH(cp, expression)` : custom function pour les formules RECHERCHE
 - `setupTriggers` : installe les déclencheurs (via menu)
@@ -88,6 +88,10 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 - `protegerFeuillesReference` : protège DPT_SOURCE, _DDL_TRANSFERTS, _COMMERCIAUX_PAR_FILIALE_H
 - `testEnvoiEmail`, `afficherDestinataires`, `reinitialiserHistorique`
 
+> **v4** : le handler de modification a été renommé (`gererModificationActif`)
+> pour éviter une double exécution. **Après mise à jour du code, relancer une
+> fois ⚙️ Transferts → Installer les déclencheurs.**
+>
 > **v3** : le tracking des emails est basé sur le contenu du transfert
 > (filiale + commercial + date) et non plus sur le numéro de ligne.
 > Les insertions/suppressions de lignes ne créent plus de doublons ni de silences.

@@ -94,21 +94,23 @@ function installer_TRANSFERTS_(ss, logs) {
   count++;
 
   // B et C = Commerciaux filtrés par filiale (cascade via _DDL_TRANSFERTS)
-  // Chaque ligne a sa propre plage source → 200 validations distinctes nécessaires
+  // Chaque ligne a sa propre plage source → 200 règles distinctes, mais on
+  // les applique en 2 appels groupés (setDataValidations) au lieu de 400.
   const ddlSheet = ss.getSheetByName('_DDL_TRANSFERTS');
   if (ddlSheet) {
-    // Grouper les appels pour réduire la charge : SpreadsheetApp.flush() tous les 50
+    const regles = [];
     for (let i = 2; i <= 201; i++) {
-      const sourceRange = ddlSheet.getRange(i, 1, 1, 30);
-      const rule = SpreadsheetApp.newDataValidation()
-        .requireValueInRange(sourceRange, true)
-        .setAllowInvalid(true)
-        .setHelpText('Choisissez parmi les commerciaux de la filiale sélectionnée (colonne A).')
-        .build();
-      sheet.getRange(i, 2).setDataValidation(rule);
-      sheet.getRange(i, 3).setDataValidation(rule);
-      if (i % 50 === 0) SpreadsheetApp.flush(); // libère la mémoire par paliers
+      const sourceRange = ddlSheet.getRange(i, 1, 1, 30); // A:AD de la ligne i
+      regles.push([
+        SpreadsheetApp.newDataValidation()
+          .requireValueInRange(sourceRange, true)
+          .setAllowInvalid(true)
+          .setHelpText('Choisissez parmi les commerciaux de la filiale sélectionnée (colonne A).')
+          .build()
+      ]);
     }
+    sheet.getRange(2, 2, 200, 1).setDataValidations(regles); // colonne B en 1 appel
+    sheet.getRange(2, 3, 200, 1).setDataValidations(regles); // colonne C en 1 appel
     count += 2;
   } else {
     logs.push('⚠ _DDL_TRANSFERTS manquante — colonnes B et C sans cascade');

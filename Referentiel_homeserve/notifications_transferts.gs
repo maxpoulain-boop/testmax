@@ -3,12 +3,18 @@
  * NOTIFICATIONS TRANSFERTS + CP_MATCH — HomeServe Énergies Services
  * ============================================================
  *
- * v3 — Améliorations :
+ * v4 — Corrections de revue :
+ *   - Le handler de modification est renommé gererModificationActif (au lieu de
+ *     onEdit) pour éviter la double exécution simple-trigger + installable.
+ *     → APRÈS MISE À JOUR : relancer "Installer les déclencheurs" une fois.
+ *   - Emails : échappement HTML des valeurs (noms, commentaires)
+ *   - verifierRappelsQuotidiens : PropertiesService sorti de la boucle
+ *
+ * v3 :
  *   - Tracking des emails par clé contenu (filiale+remplace+nouveau+date)
  *     au lieu du numéro de ligne → résistant aux insertions/suppressions
  *   - Fonction onOpen : menu "⚙️ Transferts" visible dans le ruban
  *   - Fonction diagnostiquer() pour vérifier toute la configuration
- *   - Gestion d'erreur améliorée
  *
  * INSTALLATION
  * ============================================================
@@ -123,10 +129,14 @@ function testCPMatch(cp, expression) {
 }
 
 // ============================================================
-// DÉCLENCHEUR onEdit
+// DÉCLENCHEUR DE MODIFICATION (installable)
 // ============================================================
+// IMPORTANT : ce handler ne doit PAS s'appeler onEdit, sinon Google le lance
+// aussi comme "simple trigger" — qui n'a pas le droit d'envoyer des emails et
+// génère une erreur à chaque édition. On lui donne donc un nom dédié et on le
+// branche via setupTriggers() comme déclencheur installable.
 
-function onEdit(e) {
+function gererModificationActif(e) {
   if (!e || !e.range) return;
   try {
     const sheet = e.range.getSheet();
@@ -145,7 +155,7 @@ function onEdit(e) {
       envoyerEmailAnnulation(row);
     }
   } catch (err) {
-    Logger.log('Erreur onEdit : ' + err.message);
+    Logger.log('Erreur gererModificationActif : ' + err.message);
   }
 }
 
@@ -162,6 +172,7 @@ function verifierRappelsQuotidiens() {
 
   const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
   const aujourdHui = nouvelleDate(new Date());
+  const props = PropertiesService.getDocumentProperties();
 
   for (let i = 0; i < data.length; i++) {
     const filiale  = data[i][COL_FILIALE - 1];
@@ -175,7 +186,6 @@ function verifierRappelsQuotidiens() {
 
     const infos = lireRangee(data[i]);
     const cle = cleTransfert(infos);
-    const props = PropertiesService.getDocumentProperties();
 
     if (props.getProperty(PROP_REMINDER + cle) !== 'true') {
       envoyerEmailRappelAvecInfos(infos);
@@ -346,8 +356,18 @@ function construireCorpsEmail(infos, titre, accroche) {
 }
 
 function ligneTable(lbl, val) {
-  return '<tr><td style="padding:6px;background:#f4f7fb;font-weight:600;">' + lbl + '</td>' +
-         '<td style="padding:6px;">' + val + '</td></tr>';
+  return '<tr><td style="padding:6px;background:#f4f7fb;font-weight:600;">' + echapperHtml(lbl) + '</td>' +
+         '<td style="padding:6px;">' + echapperHtml(val) + '</td></tr>';
+}
+
+// Échappe les caractères HTML pour éviter qu'un nom ou commentaire (ex: "A < B")
+// ne casse la mise en page de l'email.
+function echapperHtml(val) {
+  return String(val == null ? '' : val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function formaterDate(d) {
@@ -381,7 +401,7 @@ function soustraireJoursOuvres(date, n) {
 function setupTriggers() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
 
-  ScriptApp.newTrigger('onEdit')
+  ScriptApp.newTrigger('gererModificationActif')
     .forSpreadsheet(SpreadsheetApp.getActive())
     .onEdit()
     .create();
@@ -504,9 +524,9 @@ function diagnostiquer() {
 
   // Déclencheurs
   const triggers = ScriptApp.getProjectTriggers();
-  const hasOnEdit = triggers.some(t => t.getHandlerFunction() === 'onEdit');
+  const hasOnEdit = triggers.some(t => t.getHandlerFunction() === 'gererModificationActif');
   const hasQuotidien = triggers.some(t => t.getHandlerFunction() === 'verifierRappelsQuotidiens');
-  lignes.push(hasOnEdit    ? '✓ Déclencheur onEdit installé'       : '✗ Déclencheur onEdit manquant → lancer setupTriggers()');
+  lignes.push(hasOnEdit    ? '✓ Déclencheur de modification installé' : '✗ Déclencheur de modification manquant → lancer setupTriggers()');
   lignes.push(hasQuotidien ? '✓ Déclencheur quotidien installé'    : '✗ Déclencheur quotidien manquant → lancer setupTriggers()');
   if (!hasOnEdit || !hasQuotidien) ok = false;
 
