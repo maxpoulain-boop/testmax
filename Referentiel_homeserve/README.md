@@ -59,30 +59,54 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 - Email d'annulation si Actif repasse à Non
 - Mode TEST (1 email) / PROD (3 emails) basculable dans la feuille CONTACTS
 
+## Installation (après import Excel → Sheets)
+
+**Séquence complète dans l'ordre :**
+
+1. Ouvrir le Google Sheet
+2. `Extensions → Apps Script`
+3. Créer/remplacer les 3 fichiers `.gs` avec le contenu de ce dépôt
+4. Sauvegarder → fermer et rouvrir le Sheet
+5. Le menu **⚙️ Transferts** apparaît dans le ruban
+6. **⚙️ Transferts → Installer les déclencheurs**
+7. **⚙️ Transferts → Installer les listes déroulantes** (20-30s)
+8. **⚙️ Transferts → Ajouter les notes d'aide**
+9. Renseigner l'email dans CONTACTS (cellule C9 pour mode TEST)
+10. **⚙️ Transferts → Tester l'envoi d'email**
+11. **⚙️ Transferts → Diagnostiquer la configuration** → tout doit être ✓
+12. (Optionnel) **⚙️ Transferts → Protéger les feuilles de référence**
+
 ## Scripts Apps Script installés
 
-### 1. `notifications_transferts.gs`
-Le principal. Contient :
-- `onEdit` (déclencheur installable) : email à l'activation
-- `verifierRappelsQuotidiens` (déclencheur temporel quotidien) : email J-3 ouvrés
-- `CP_MATCH(cp, expression)` : custom function utilisée dans les formules RECHERCHE
-- `setupTriggers` : à lancer 1× pour installer les déclencheurs
-- `testEnvoiEmail`, `afficherDestinataires`, `reinitialiserHistorique` : utilitaires
+### 1. `notifications_transferts.gs` (principal)
+- `onOpen` : crée le menu **⚙️ Transferts** dans le ruban
+- `onEdit` (déclencheur installable) : email à l'activation d'un transfert
+- `verifierRappelsQuotidiens` (déclencheur quotidien 7h) : email J-3 ouvrés
+- `CP_MATCH(cp, expression)` : custom function pour les formules RECHERCHE
+- `setupTriggers` : installe les déclencheurs (via menu)
+- `diagnostiquer` : vérifie feuilles, emails, déclencheurs
+- `protegerFeuillesReference` : protège DPT_SOURCE, _DDL_TRANSFERTS, _COMMERCIAUX_PAR_FILIALE_H
+- `testEnvoiEmail`, `afficherDestinataires`, `reinitialiserHistorique`
+
+> **v3** : le tracking des emails est basé sur le contenu du transfert
+> (filiale + commercial + date) et non plus sur le numéro de ligne.
+> Les insertions/suppressions de lignes ne créent plus de doublons ni de silences.
 
 ### 2. `installer_validations.gs`
 À relancer si les listes déroulantes sautent (après réimport Excel → Sheets) :
-- `installerToutesLesValidations` : recrée toutes les validations nativement dans Google Sheets
+- `installerToutesLesValidations` : recrée toutes les validations nativement
 
 ### 3. `notes_helper.gs`
-Ajoute les info-bulles au survol (sur colonnes B, C, I de TRANSFERTS) :
+Info-bulles au survol (TRANSFERTS colonnes B, C, I + RECHERCHE) :
 - `ajouterNotes` / `retirerNotes`
 
 ## Points d'attention récurrents
 
-1. **Listes déroulantes Excel ne survivent pas à l'import Google Sheets** → toujours utiliser `installerToutesLesValidations` après import
-2. **Les info-bulles Excel ne sont pas importées** non plus → utiliser `ajouterNotes`
-3. **Toujours vérifier les validations après modification** du fichier (régression fréquente)
-4. **Formules matricielles** : Google Sheets requiert le pattern `MATCH(1, INDEX((cond1)*(cond2), 0), 0)` au lieu de `MATCH(1, (cond1)*(cond2), 0)` qui exige CSE
+1. **Listes déroulantes Excel ne survivent pas à l'import Google Sheets** → toujours relancer `installerToutesLesValidations` après import
+2. **Les info-bulles Excel ne sont pas importées** → relancer `ajouterNotes`
+3. **Toujours vérifier après modification** via **⚙️ Transferts → Diagnostiquer**
+4. **Formules matricielles** : Google Sheets requiert `MATCH(1, INDEX((cond1)*(cond2), 0), 0)` — le pattern CSE `MATCH(1, (cond1)*(cond2), 0)` ne fonctionne pas
+5. **DPT_SOURCE (35 000 lignes)** : principale source de lenteur — protéger la feuille évite les recalculs accidentels
 
 ## Évolutions envisagées (à voir avec l'utilisateur)
 
