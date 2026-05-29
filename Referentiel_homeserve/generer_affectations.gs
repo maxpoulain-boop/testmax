@@ -44,6 +44,64 @@ const GEN = {
 };
 
 // ============================================================
+// 0. CHARTE GRAPHIQUE HOMESERVE
+// ============================================================
+// Couleurs HomeServe France : rouge primaire, teal secondaire.
+const CHARTE = {
+  ROUGE: '#E22C22',
+  BLANC: '#ffffff',
+  GRIS: '#9e9e9e',          // onglets des feuilles techniques
+  // Feuilles "données" dont la ligne 1 est un vrai en-tête → coloration ligne 1
+  ENTETES: [
+    'AFFECTATIONS_COMMUNES', 'PRODUITS_COMMERCIAUX', 'EXCEPTIONS_PRODUITS',
+    'TRANSFERTS', 'CONTACTS', 'PARAMETRES', 'SAISIE_SECTEURS',
+  ],
+  // Feuilles visibles métier → onglet rouge (sans toucher leur mise en page)
+  ONGLETS_ROUGES: [
+    'ACCUEIL', 'RECHERCHE', 'VUE_REGIONALE', 'AFFECTATIONS_COMMUNES',
+    'PRODUITS_COMMERCIAUX', 'EXCEPTIONS_PRODUITS', 'TRANSFERTS', 'CONTACTS',
+    'PARAMETRES', 'SAISIE_SECTEURS',
+  ],
+  // Feuilles techniques → onglet gris pour les distinguer
+  ONGLETS_GRIS: ['_COMMERCIAUX_PAR_FILIALE_H', '_DDL_TRANSFERTS', 'DPT_SOURCE'],
+};
+
+/**
+ * Applique la charte HomeServe au classeur :
+ *   - en-têtes (ligne 1) des feuilles de données en rouge / blanc / gras
+ *   - onglets des feuilles métier en rouge, feuilles techniques en gris
+ * Ne modifie ni les données, ni la mise en page des tableaux de bord.
+ */
+function appliquerCharte() {
+  const ss = SpreadsheetApp.getActive();
+  let entetes = 0, onglets = 0;
+
+  CHARTE.ENTETES.forEach(nom => {
+    const sh = ss.getSheetByName(nom);
+    if (!sh) return;
+    const nbCol = sh.getLastColumn();
+    if (nbCol < 1) return;
+    sh.getRange(1, 1, 1, nbCol)
+      .setBackground(CHARTE.ROUGE)
+      .setFontColor(CHARTE.BLANC)
+      .setFontWeight('bold');
+    entetes++;
+  });
+
+  CHARTE.ONGLETS_ROUGES.forEach(nom => {
+    const sh = ss.getSheetByName(nom);
+    if (sh) { sh.setTabColor(CHARTE.ROUGE); onglets++; }
+  });
+  CHARTE.ONGLETS_GRIS.forEach(nom => {
+    const sh = ss.getSheetByName(nom);
+    if (sh) { sh.setTabColor(CHARTE.GRIS); onglets++; }
+  });
+
+  ss.toast(entetes + ' en-têtes + ' + onglets + ' onglets mis aux couleurs HomeServe.',
+    '🎨 Charte appliquée', 6);
+}
+
+// ============================================================
 // 1. CRÉATION DE LA FEUILLE DE SAISIE
 // ============================================================
 function creerFeuilleSaisie() {

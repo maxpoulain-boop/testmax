@@ -71,6 +71,7 @@ function onOpen() {
     .addSeparator()
     .addItem('🗂️ Créer la feuille de saisie (secteurs)', 'creerFeuilleSaisie')
     .addItem('⚡ Générer les affectations depuis la saisie', 'genererAffectations')
+    .addItem('🎨 Appliquer la charte HomeServe', 'appliquerCharte')
     .addSeparator()
     .addItem('📧 Tester l\'envoi d\'email', 'testEnvoiEmail')
     .addItem('👥 Voir les destinataires configurés', 'afficherDestinataires')
