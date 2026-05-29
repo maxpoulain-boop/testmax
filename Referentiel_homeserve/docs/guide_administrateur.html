@@ -271,6 +271,71 @@
   </div>
 
 
+  <h2>Tâche courante : ajouter un commercial et son secteur</h2>
+
+  <p>C'est l'opération la plus fréquente. Elle se fait <strong>toujours dans cet ordre</strong> —
+  un commercial doit d'abord être déclaré dans le référentiel, sinon il n'apparaîtra ni dans
+  les listes déroulantes ni dans les affectations.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <strong>Déclarer le commercial (obligatoire, en premier)</strong>
+        Dans <code>_COMMERCIAUX_PAR_FILIALE_H</code> : repérer la ligne de sa filiale,
+        écrire son nom dans la première colonne vide. C'est cette feuille qui alimente
+        les listes déroulantes en cascade (colonnes B et C de TRANSFERTS).
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <strong>Mettre à jour les listes déroulantes</strong>
+        <span class="menu-path">⚙️ Transferts → Installer les listes déroulantes</span><br>
+        Le nouveau nom devient sélectionnable partout (notamment comme remplaçant dans TRANSFERTS).
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <strong>Saisir son secteur et ses produits</strong>
+        Ajouter une ligne dans <code>SAISIE_SECTEURS</code> :
+        <code>Filiale | Commercial | Type zone (CP ou COMMUNES) | Zone | Produits</code>.
+        Les CP utilisent la même syntaxe que les TRANSFERTS (<code>33000-33999, 47000</code>).
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <strong>Générer</strong>
+        <span class="menu-path">⚙️ Transferts → Générer les affectations depuis la saisie</span><br>
+        Remplit automatiquement <code>AFFECTATIONS_COMMUNES</code> (communes) et
+        <code>PRODUITS_COMMERCIAUX</code> (produits). Vérifier l'aperçu, puis confirmer.
+      </div>
+    </div>
+  </div>
+
+  <div class="alert alert-warning">
+    <strong>Piège à éviter :</strong> si le commercial est saisi dans <code>SAISIE_SECTEURS</code>
+    sans avoir été déclaré à l'étape 1, la génération le signale comme « commercial inconnu du
+    référentiel » et la cascade TRANSFERTS ne le proposera pas. Toujours commencer par
+    <code>_COMMERCIAUX_PAR_FILIALE_H</code>.
+  </div>
+
+  <div class="alert alert-info">
+    <strong>Où le commercial apparaît ensuite :</strong> listes déroulantes TRANSFERTS (après
+    étape 2) ; <code>AFFECTATIONS_COMMUNES</code> + <code>PRODUITS_COMMERCIAUX</code> et donc le
+    moteur RECHERCHE (après étape 4). Les cas particuliers (<code>EXCEPTIONS_PRODUITS</code>,
+    transferts) restent à saisir à la main selon le besoin.
+  </div>
+
+  <div class="alert alert-success">
+    <strong>Pour modifier un secteur plus tard</strong> (CP, communes, produits) : on modifie
+    la ligne du commercial dans <code>SAISIE_SECTEURS</code> puis on relance la génération.
+    Ne jamais corriger à la main les lignes « généré » des feuilles produites.
+  </div>
+
+
   <h2>Installation initiale (ou après import Excel)</h2>
 
   <div class="alert alert-warning">
@@ -409,12 +474,8 @@
   <p>Aujard, Cerise Energies, Chauffage du Nord, DEC Energies, EGS Energies, GD Energies, GEODIS, JCM Confort, Lepretre Energies, Mure Energies, Prigent Abiven, Roussin Energies, SBF Energies, SMT Energies, <strong>VIK Energies</strong> (fusion ID Energies + PH Energies + Conviflamme + Concept Habitat).</p>
 
   <h3>Ajouter un commercial</h3>
-  <ol>
-    <li>Aller dans <code>_COMMERCIAUX_PAR_FILIALE_H</code></li>
-    <li>Trouver la ligne de la filiale concernée</li>
-    <li>Ajouter le nom dans la première colonne vide</li>
-    <li>Relancer "Installer les listes déroulantes" pour que la cascade se mette à jour</li>
-  </ol>
+  <p>Procédure complète (déclaration + secteur + produits) décrite plus haut dans
+  <strong>« Tâche courante : ajouter un commercial et son secteur »</strong>.</p>
 
 
   <h2>Peupler les affectations en masse (génération par règles)</h2>
