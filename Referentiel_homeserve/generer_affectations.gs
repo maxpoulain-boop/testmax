@@ -1,0 +1,327 @@
+/**
+ * ============================================================
+ * GÉNÉRATION DES AFFECTATIONS PAR RÈGLES — HomeServe Énergies Services
+ * ============================================================
+ *
+ * Objectif : éviter la saisie manuelle des ~9 300 lignes d'AFFECTATIONS_COMMUNES.
+ *
+ * Principe :
+ *   - On saisit UNE règle par commercial dans l'onglet SAISIE_SECTEURS :
+ *       Filiale | Commercial | Type zone (CP|COMMUNES) | Zone | Produits
+ *   - "Zone" réutilise la même syntaxe que CP_MATCH : 33000-33999, 47000, etc.
+ *     (ou une liste de noms de communes si Type = COMMUNES).
+ *   - genererAffectations() déplie ces règles contre DPT_SOURCE et écrit :
+ *       • AFFECTATIONS_COMMUNES  (1 ligne par commune × commercial)
+ *       • PRODUITS_COMMERCIAUX   (1 ligne par commercial × produit)
+ *
+ * Rôle déduit automatiquement :
+ *   - 1 seul commercial sur une commune  → Principal (Priorité 1)
+ *   - 2 commerciaux ou plus               → Co-affecté (Priorité 2)
+ *
+ * Sécurité des données manuelles :
+ *   - Une colonne "Origine" marque les lignes générées (= "généré").
+ *   - La régénération ne supprime QUE les lignes générées : tes saisies
+ *     manuelles (Origine vide) sont préservées.
+ *   - Idempotent : relançable filiale par filiale au fil des infos reçues.
+ *
+ * Dépendances : réutilise testCPMatch() et normaliserCP() (notifications_transferts.gs).
+ * ============================================================
+ */
+
+const GEN = {
+  SAISIE: 'SAISIE_SECTEURS',
+  AFFECT: 'AFFECTATIONS_COMMUNES',
+  PRODUITS: 'PRODUITS_COMMERCIAUX',
+  DPT: 'DPT_SOURCE',
+  PARAMS: 'PARAMETRES',
+  MARQUEUR: 'généré',
+  // AFFECTATIONS_COMMUNES : 12 colonnes natives + 1 colonne "Origine" (M=13)
+  AFFECT_COLS: 12,
+  AFFECT_ORIGINE: 13,
+  // PRODUITS_COMMERCIAUX : 6 colonnes natives + 1 colonne "Origine" (G=7)
+  PRODUITS_COLS: 6,
+  PRODUITS_ORIGINE: 7,
+};
+
+// ============================================================
+// 1. CRÉATION DE LA FEUILLE DE SAISIE
+// ============================================================
+function creerFeuilleSaisie() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(GEN.SAISIE);
+  if (sheet) {
+    SpreadsheetApp.getUi().alert(
+      'La feuille ' + GEN.SAISIE + ' existe déjà.',
+      'Elle n\'a pas été modifiée. Supprime-la manuellement si tu veux repartir de zéro.',
+      SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  sheet = ss.insertSheet(GEN.SAISIE, ss.getNumSheets());
+
+  const entetes = ['Filiale', 'Commercial', 'Type zone', 'Zone', 'Produits', 'Commentaire'];
+  sheet.getRange(1, 1, 1, entetes.length).setValues([entetes])
+    .setFontWeight('bold').setBackground('#0b5394').setFontColor('#ffffff');
+  sheet.setFrozenRows(1);
+
+  // Exemples explicatifs
+  const exemples = [
+    ['DEC Energies', 'Jean DUPONT', 'CP', '33000-33999, 47000', 'Pompe à chaleur Air/Eau, Panneaux photovoltaïques', 'Exemple : secteur par CP'],
+    ['Cerise Energies', 'Marie MARTIN', 'COMMUNES', 'BORDEAUX, MERIGNAC, PESSAC', 'Tous', 'Exemple : secteur par liste de communes'],
+  ];
+  sheet.getRange(2, 1, exemples.length, exemples[0].length).setValues(exemples)
+    .setFontStyle('italic').setFontColor('#999999');
+
+  // Validations : Filiale + Type zone
+  if (typeof plageSource_ === 'function') {
+    try {
+      sheet.getRange('A2:A500').setDataValidation(regleListe_(ss, 'filiales', true));
+    } catch (e) { /* PARAMETRES absent : on ignore */ }
+  }
+  sheet.getRange('C2:C500').setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(['CP', 'COMMUNES'], true).setAllowInvalid(false).build());
+
+  // Notes d'aide
+  sheet.getRange('D1').setNote(
+    'Type CP : syntaxe identique à la colonne CP des TRANSFERTS\n' +
+    '  33000  |  33000, 47000  |  33000-33999  |  mix  |  Tous\n' +
+    'Type COMMUNES : liste de noms de communes séparés par des virgules');
+  sheet.getRange('E1').setNote(
+    'Produits gérés par ce commercial, séparés par des virgules.\n' +
+    '"Tous" = tous les produits du référentiel (PARAMETRES C2:C25).');
+
+  sheet.setColumnWidth(4, 260);
+  sheet.setColumnWidth(5, 300);
+  sheet.setColumnWidth(6, 220);
+
+  ss.toast('Feuille ' + GEN.SAISIE + ' créée. Remplace les lignes d\'exemple par tes règles.', '✓ Prêt', 8);
+  sheet.activate();
+}
+
+// ============================================================
+// 2. UTILITAIRES
+// ============================================================
+
+/** Normalise un nom de commune pour comparaison : majuscules, sans accents ni ponctuation. */
+function normaliserNomCommune_(x) {
+  if (x === null || x === undefined) return '';
+  return String(x).toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // accents
+    .replace(/[^A-Z0-9]+/g, ' ').trim();
+}
+
+/** Carte département → région, déduite de DPT_SOURCE. */
+function carteRegions_(dptValues) {
+  const carte = {};
+  for (let i = 1; i < dptValues.length; i++) {
+    const reg = dptValues[i][0];   // A = Région
+    const dep = dptValues[i][3];   // D = Département
+    if (reg && dep && !carte[dep]) carte[dep] = reg;
+  }
+  return carte;
+}
+
+/** Liste des produits du référentiel (pour expansion de "Tous"). */
+function listeProduits_(ss) {
+  const params = ss.getSheetByName(GEN.PARAMS);
+  if (!params) return [];
+  const vals = params.getRange('C2:C25').getValues();
+  return vals.map(r => r[0]).filter(v => v !== '' && v !== null);
+}
+
+/** Découpe une cellule "Produits" en tableau, en expansant "Tous". */
+function parseProduits_(cell, tousProduits) {
+  if (cell === null || cell === undefined) return [];
+  const txt = String(cell).trim();
+  if (txt === '') return [];
+  if (txt.toLowerCase() === 'tous') return tousProduits.slice();
+  return txt.split(/[,;\n\r]+/).map(s => s.trim()).filter(s => s !== '');
+}
+
+// ============================================================
+// 3. GÉNÉRATION
+// ============================================================
+function genererAffectations() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+
+  const saisie = ss.getSheetByName(GEN.SAISIE);
+  if (!saisie) {
+    ui.alert('Feuille ' + GEN.SAISIE + ' introuvable.',
+      'Lance d\'abord ⚙️ Transferts → Créer la feuille de saisie.', ui.ButtonSet.OK);
+    return;
+  }
+  const dptSheet = ss.getSheetByName(GEN.DPT);
+  const affectSheet = ss.getSheetByName(GEN.AFFECT);
+  const produitsSheet = ss.getSheetByName(GEN.PRODUITS);
+  if (!dptSheet || !affectSheet || !produitsSheet) {
+    ui.alert('Feuille manquante',
+      'Vérifie la présence de DPT_SOURCE, AFFECTATIONS_COMMUNES et PRODUITS_COMMERCIAUX.', ui.ButtonSet.OK);
+    return;
+  }
+
+  ss.toast('Lecture des données…', '⏳ Génération', -1);
+
+  // --- Lecture DPT_SOURCE ---
+  const dpt = dptSheet.getDataRange().getValues(); // 0=Région,2=Filiale,3=Dép,4=CP,5=Nom
+  const carteReg = carteRegions_(dpt);
+
+  // --- Lecture des règles ---
+  const derniere = saisie.getLastRow();
+  if (derniere < 2) { ss.toast('Aucune règle à traiter.', 'Génération', 5); return; }
+  const regles = saisie.getRange(2, 1, derniere - 1, 6).getValues();
+
+  const tousProduits = listeProduits_(ss);
+
+  // Accumulateurs
+  // communes : clé "cp|villeNorm" → { cp, ville, region, commerciaux: [{nom, filiale}] }
+  const communes = {};
+  const produitsSet = {}; // clé "filiale|commercial|produit" → true
+  const rapport = { regles: 0, sansMatch: [], sansProduit: [], lignesIgnorees: 0 };
+
+  for (let r = 0; r < regles.length; r++) {
+    const [filiale, commercial, typeZone, zone, produitsCell] = regles[r];
+    if (!filiale || !commercial) { rapport.lignesIgnorees++; continue; }
+    rapport.regles++;
+
+    const type = String(typeZone || 'CP').trim().toUpperCase();
+    let nbCommunes = 0;
+
+    if (type === 'COMMUNES') {
+      // Liste de noms de communes
+      const noms = String(zone || '').split(/[,;\n\r]+/).map(normaliserNomCommune_).filter(Boolean);
+      const cible = {};
+      noms.forEach(n => cible[n] = true);
+      for (let i = 1; i < dpt.length; i++) {
+        const nomNorm = normaliserNomCommune_(dpt[i][5]);
+        if (cible[nomNorm]) {
+          nbCommunes += ajouterCommune_(communes, dpt[i], carteReg, filiale, commercial);
+        }
+      }
+    } else {
+      // Type CP : matching via testCPMatch
+      const expr = String(zone || '').trim();
+      for (let i = 1; i < dpt.length; i++) {
+        const cp = normaliserCP(dpt[i][4]);
+        if (cp && testCPMatch(cp, expr)) {
+          nbCommunes += ajouterCommune_(communes, dpt[i], carteReg, filiale, commercial);
+        }
+      }
+    }
+
+    if (nbCommunes === 0) rapport.sansMatch.push(commercial + ' (' + filiale + ')');
+
+    // Produits
+    const prods = parseProduits_(produitsCell, tousProduits);
+    if (prods.length === 0) {
+      rapport.sansProduit.push(commercial + ' (' + filiale + ')');
+    } else {
+      prods.forEach(p => { produitsSet[filiale + '|' + commercial + '|' + p] = true; });
+    }
+  }
+
+  // --- Construction des lignes AFFECTATIONS générées ---
+  const conflitsMultiFiliale = [];
+  const lignesAffect = [];
+  Object.keys(communes).forEach(cle => {
+    const c = communes[cle];
+    const nb = c.commerciaux.length;
+    const role = nb >= 2 ? 'Co-affecté' : 'Principal';
+    const prio = nb >= 2 ? 2 : 1;
+    // Détection commune partagée entre filiales différentes
+    const filiales = {};
+    c.commerciaux.forEach(x => filiales[x.filiale] = true);
+    if (Object.keys(filiales).length > 1) conflitsMultiFiliale.push(c.ville + ' (' + c.cp + ')');
+
+    c.commerciaux.forEach(x => {
+      // A Région | B Filiale | C CP | D Ville | E Commercial | F Secteur | G Actif
+      // H Commentaire | I Clé commune | J Rôle | K Priorité | L Rang | M Origine
+      lignesAffect.push([
+        c.region, x.filiale, c.cp, c.ville, x.nom, '', 'Oui',
+        '', '', role, prio, '', GEN.MARQUEUR
+      ]);
+    });
+  });
+
+  // --- Construction des lignes PRODUITS générées ---
+  const lignesProduits = Object.keys(produitsSet).map(cle => {
+    const [filiale, commercial, produit] = cle.split('|');
+    // A Filiale | B Commercial | C Produit | D Actif | E Commentaire | F Rang | G Origine
+    return [filiale, commercial, produit, 'Oui', '', '', GEN.MARQUEUR];
+  });
+
+  // --- Écriture (en préservant les lignes manuelles) ---
+  ss.toast('Écriture de ' + lignesAffect.length + ' affectations…', '⏳ Génération', -1);
+  ecrireEnPreservantManuel_(affectSheet, lignesAffect, GEN.AFFECT_COLS, GEN.AFFECT_ORIGINE, 'Origine');
+  ecrireEnPreservantManuel_(produitsSheet, lignesProduits, GEN.PRODUITS_COLS, GEN.PRODUITS_ORIGINE, 'Origine');
+
+  // --- Rapport ---
+  const lignes = [];
+  lignes.push('Règles traitées : ' + rapport.regles + (rapport.lignesIgnorees ? ' (' + rapport.lignesIgnorees + ' ligne(s) ignorée(s), filiale/commercial vide)' : ''));
+  lignes.push('Communes couvertes : ' + Object.keys(communes).length);
+  lignes.push('Lignes AFFECTATIONS générées : ' + lignesAffect.length);
+  lignes.push('Lignes PRODUITS générées : ' + lignesProduits.length);
+  lignes.push('');
+  if (rapport.sansMatch.length) lignes.push('⚠ Aucune commune trouvée pour : ' + rapport.sansMatch.join(', '));
+  if (rapport.sansProduit.length) lignes.push('⚠ Aucun produit renseigné pour : ' + rapport.sansProduit.join(', '));
+  if (conflitsMultiFiliale.length) lignes.push('⚠ Communes partagées entre filiales différentes : ' + conflitsMultiFiliale.slice(0, 20).join(', ') + (conflitsMultiFiliale.length > 20 ? '…' : ''));
+  if (!rapport.sansMatch.length && !rapport.sansProduit.length && !conflitsMultiFiliale.length) lignes.push('✓ Aucun avertissement.');
+
+  ss.toast('Terminé', '✓ Génération', 5);
+  ui.alert('Génération terminée', lignes.join('\n'), ui.ButtonSet.OK);
+}
+
+/** Ajoute un commercial à une commune (dédup commercial). Retourne 1 si nouvelle commune. */
+function ajouterCommune_(communes, dptRow, carteReg, filiale, commercial) {
+  const cp = normaliserCP(dptRow[4]);
+  const ville = String(dptRow[5] || '').trim();
+  const dep = dptRow[3];
+  const region = dptRow[0] || carteReg[dep] || '';
+  const cle = cp + '|' + normaliserNomCommune_(ville);
+
+  let nouvelle = 0;
+  if (!communes[cle]) {
+    communes[cle] = { cp: cp, ville: ville, region: region, commerciaux: [] };
+    nouvelle = 1;
+  }
+  // Dédup : un même commercial ne doit pas apparaître deux fois sur la commune
+  const existe = communes[cle].commerciaux.some(x => x.nom === commercial && x.filiale === filiale);
+  if (!existe) communes[cle].commerciaux.push({ nom: commercial, filiale: filiale });
+  return nouvelle;
+}
+
+/**
+ * Réécrit une feuille en gardant les lignes manuelles (colonne Origine ≠ "généré")
+ * et en remplaçant les lignes générées par le nouveau lot.
+ */
+function ecrireEnPreservantManuel_(sheet, lignesGenerees, nbCols, colOrigine, titreOrigine) {
+  // S'assure que l'en-tête de la colonne Origine existe
+  if (!sheet.getRange(1, colOrigine).getValue()) {
+    sheet.getRange(1, colOrigine).setValue(titreOrigine).setFontWeight('bold');
+  }
+
+  const last = sheet.getLastRow();
+  let manuelles = [];
+  if (last >= 2) {
+    const data = sheet.getRange(2, 1, last - 1, colOrigine).getValues();
+    manuelles = data.filter(row => {
+      // ligne non vide ET non générée
+      const origine = row[colOrigine - 1];
+      const vide = row.slice(0, nbCols).every(v => v === '' || v === null);
+      return !vide && origine !== GEN.MARQUEUR;
+    });
+  }
+
+  // Efface tout sous l'en-tête puis réécrit manuelles + générées
+  if (last >= 2) sheet.getRange(2, 1, last - 1, colOrigine).clearContent();
+
+  const tout = manuelles.concat(
+    lignesGenerees.map(l => {
+      // normalise la largeur à colOrigine colonnes
+      const row = l.slice();
+      while (row.length < colOrigine) row.push('');
+      return row;
+    })
+  );
+  if (tout.length) sheet.getRange(2, 1, tout.length, colOrigine).setValues(tout);
+}
