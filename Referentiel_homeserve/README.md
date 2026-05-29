@@ -85,8 +85,14 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 - `CP_MATCH(cp, expression)` : custom function pour les formules RECHERCHE
 - `setupTriggers` : installe les déclencheurs (via menu)
 - `diagnostiquer` : vérifie feuilles, emails, déclencheurs
+- `purgerProprietesObsoletes` : nettoie les flags d'envoi orphelins (auto, chaque jour)
 - `protegerFeuillesReference` : protège DPT_SOURCE, _DDL_TRANSFERTS, _COMMERCIAUX_PAR_FILIALE_H
 - `testEnvoiEmail`, `afficherDestinataires`, `reinitialiserHistorique`
+
+> **v5** : les flags d'envoi orphelins (suite à suppression de lignes ou
+> changement de dates) sont purgés automatiquement chaque jour. Les listes de
+> référence sont pilotées par des **plages nommées** (voir ci-dessous) :
+> agrandir une liste ne nécessite plus de modifier le code.
 
 > **v4** : le handler de modification a été renommé (`gererModificationActif`)
 > pour éviter une double exécution. **Après mise à jour du code, relancer une
@@ -99,6 +105,26 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 ### 2. `installer_validations.gs`
 À relancer si les listes déroulantes sautent (après réimport Excel → Sheets) :
 - `installerToutesLesValidations` : recrée toutes les validations nativement
+- `installerPlagesNommees` : crée les plages nommées `PARAM_*` à partir de l'objet
+  `PARAM` (source unique des adresses). Appelé automatiquement par
+  `installerToutesLesValidations`.
+
+**Plages nommées créées** (toutes pointent vers l'onglet PARAMETRES) :
+
+| Plage nommée | Adresse | Contenu |
+|---|---|---|
+| `PARAM_REGIONS` | A2:A5 | Régions |
+| `PARAM_FILIALES` | B2:B16 | Filiales |
+| `PARAM_PRODUITS` | C2:C25 | Produits |
+| `PARAM_ACTIF` | D2:D3 | Oui / Non |
+| `PARAM_MOTIFS` | E2:E6 | Motifs |
+| `PARAM_PRIORITES` | H2:H6 | Priorités |
+| `PARAM_ROLES` | I2:I6 | Rôles |
+| `PARAM_PRODUITS_T` | J2:J26 | Produits + "Tous" |
+
+> Pour agrandir une liste (ex : 16e filiale), étendre la plage nommée via
+> `Données → Plages nommées` **puis** relancer "Installer les listes déroulantes".
+> Si on préfère, modifier l'adresse `a1` dans l'objet `PARAM` du script suffit aussi.
 
 ### 3. `notes_helper.gs`
 Info-bulles au survol (TRANSFERTS colonnes B, C, I + RECHERCHE) :

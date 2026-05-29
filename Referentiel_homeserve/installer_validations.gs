@@ -6,14 +6,81 @@
  * Recrée toutes les validations de données nativement dans Google Sheets.
  * À relancer après tout import Excel → Sheets (les validations Excel ne survivent pas).
  *
+ * v2 — Plages nommées :
+ *   - Les sources des listes sont centralisées dans l'objet PARAM ci-dessous.
+ *   - installerPlagesNommees() crée des plages nommées (PARAM_FILIALES, etc.)
+ *     dans le Sheet. Les validations lisent ces plages en priorité.
+ *   - Pour agrandir une liste (ex: 16e filiale), il suffit d'étendre la plage
+ *     nommée une seule fois (Données → Plages nommées) — plus besoin de toucher
+ *     au code à 15 endroits.
+ *   - Si une plage nommée n'existe pas, le code retombe sur l'adresse A1 figée.
+ *
  * UTILISATION :
  *   Menu ⚙️ Transferts → Installer les listes déroulantes
- *   — ou —
- *   Extensions > Apps Script → sélectionner installerToutesLesValidations → ▶️ Exécuter
  *
  * IDEMPOTENT : supprime puis recrée. Relançable à volonté.
  * ============================================================
  */
+
+// === Source unique des listes de référence (onglet PARAMETRES) ===
+// nom = nom de la plage nommée Google Sheets ; a1 = adresse de repli si absente.
+const PARAM = {
+  regions:   { nom: 'PARAM_REGIONS',    a1: 'A2:A5'  },
+  filiales:  { nom: 'PARAM_FILIALES',   a1: 'B2:B16' },
+  produits:  { nom: 'PARAM_PRODUITS',   a1: 'C2:C25' },
+  actif:     { nom: 'PARAM_ACTIF',      a1: 'D2:D3'  },
+  motifs:    { nom: 'PARAM_MOTIFS',     a1: 'E2:E6'  },
+  priorites: { nom: 'PARAM_PRIORITES',  a1: 'H2:H6'  },
+  roles:     { nom: 'PARAM_ROLES',      a1: 'I2:I6'  },
+  produitsT: { nom: 'PARAM_PRODUITS_T', a1: 'J2:J26' },
+};
+
+/**
+ * Retourne la plage source d'une liste : la plage nommée si elle existe,
+ * sinon l'adresse A1 figée dans PARAMETRES.
+ */
+function plageSource_(ss, cle) {
+  const def = PARAM[cle];
+  if (!def) throw new Error('Clé de liste inconnue : ' + cle);
+  const nommee = ss.getRangeByName(def.nom);
+  if (nommee) return nommee;
+  const params = ss.getSheetByName('PARAMETRES');
+  if (!params) throw new Error('Onglet PARAMETRES introuvable');
+  return params.getRange(def.a1);
+}
+
+/**
+ * Crée (ou recrée) toutes les plages nommées à partir des adresses A1 de PARAM.
+ * À lancer une fois, ou après avoir modifié la structure de PARAMETRES.
+ */
+function installerPlagesNommees() {
+  const ss = SpreadsheetApp.getActive();
+  const params = ss.getSheetByName('PARAMETRES');
+  if (!params) {
+    SpreadsheetApp.getUi().alert('Onglet PARAMETRES introuvable — impossible de créer les plages nommées.');
+    return 0;
+  }
+
+  // Supprimer les plages nommées qu'on gère, pour repartir propre
+  const nomsGeres = Object.keys(PARAM).map(c => PARAM[c].nom);
+  ss.getNamedRanges().forEach(nr => {
+    if (nomsGeres.indexOf(nr.getName()) !== -1) nr.remove();
+  });
+
+  let count = 0;
+  Object.keys(PARAM).forEach(cle => {
+    const def = PARAM[cle];
+    ss.setNamedRange(def.nom, params.getRange(def.a1));
+    count++;
+  });
+
+  ss.toast(count + ' plages nommées créées', '✓ Plages nommées', 5);
+  return count;
+}
+
+// ============================================================
+// INSTALLATION DES VALIDATIONS
+// ============================================================
 
 function installerToutesLesValidations() {
   const ss = SpreadsheetApp.getActive();
@@ -21,6 +88,9 @@ function installerToutesLesValidations() {
   const logs = [];
 
   try {
+    // S'assure que les plages nommées existent avant de bâtir les validations
+    installerPlagesNommees();
+
     total += installer_RECHERCHE_(ss, logs);
     total += installer_TRANSFERTS_(ss, logs);
     total += installer_AFFECTATIONS_(ss, logs);
@@ -43,6 +113,14 @@ function installerToutesLesValidations() {
   }
 }
 
+/** Petit raccourci pour construire une règle "valeur dans une liste de référence". */
+function regleListe_(ss, cle, allowInvalid) {
+  return SpreadsheetApp.newDataValidation()
+    .requireValueInRange(plageSource_(ss, cle), true)
+    .setAllowInvalid(allowInvalid)
+    .build();
+}
+
 // ============================================================
 // RECHERCHE
 // ============================================================
@@ -51,23 +129,11 @@ function installer_RECHERCHE_(ss, logs) {
   if (!sheet) { logs.push('✗ RECHERCHE manquante'); return 0; }
 
   sheet.getRange('A1:Z100').clearDataValidations();
-  const params = ss.getSheetByName('PARAMETRES');
   let count = 0;
 
-  // C6 = Filiale
-  sheet.getRange('C6').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('B2:B16'), true)
-      .setAllowInvalid(false).build()
-  );
+  sheet.getRange('C6').setDataValidation(regleListe_(ss, 'filiales', false)); // Filiale
   count++;
-
-  // C9 = Produit (filtre, optionnel)
-  sheet.getRange('C9').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('C2:C25'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange('C9').setDataValidation(regleListe_(ss, 'produits', true));  // Produit (filtre)
   count++;
 
   logs.push(`✓ RECHERCHE : ${count} validations`);
@@ -82,20 +148,15 @@ function installer_TRANSFERTS_(ss, logs) {
   if (!sheet) { logs.push('✗ TRANSFERTS manquante'); return 0; }
 
   sheet.getRange('A1:Z201').clearDataValidations();
-  const params = ss.getSheetByName('PARAMETRES');
   let count = 0;
 
   // A = Filiale
-  sheet.getRange('A2:A201').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('B2:B16'), true)
-      .setAllowInvalid(false).build()
-  );
+  sheet.getRange('A2:A201').setDataValidation(regleListe_(ss, 'filiales', false));
   count++;
 
   // B et C = Commerciaux filtrés par filiale (cascade via _DDL_TRANSFERTS)
-  // Chaque ligne a sa propre plage source → 200 règles distinctes, mais on
-  // les applique en 2 appels groupés (setDataValidations) au lieu de 400.
+  // Chaque ligne a sa propre plage source → 200 règles distinctes, appliquées
+  // en 2 appels groupés (setDataValidations) au lieu de 400.
   const ddlSheet = ss.getSheetByName('_DDL_TRANSFERTS');
   if (ddlSheet) {
     const regles = [];
@@ -116,28 +177,11 @@ function installer_TRANSFERTS_(ss, logs) {
     logs.push('⚠ _DDL_TRANSFERTS manquante — colonnes B et C sans cascade');
   }
 
-  // F = Motif
-  sheet.getRange('F2:F201').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('E2:E6'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange('F2:F201').setDataValidation(regleListe_(ss, 'motifs', true));     // F = Motif
   count++;
-
-  // G = Actif
-  sheet.getRange('G2:G201').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('D2:D3'), true)
-      .setAllowInvalid(false).build()
-  );
+  sheet.getRange('G2:G201').setDataValidation(regleListe_(ss, 'actif', false));     // G = Actif
   count++;
-
-  // H = Produit (liste incluant "Tous")
-  sheet.getRange('H2:H201').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('J2:J26'), true)
-      .setAllowInvalid(false).build()
-  );
+  sheet.getRange('H2:H201').setDataValidation(regleListe_(ss, 'produitsT', false)); // H = Produit (+ Tous)
   count++;
 
   logs.push(`✓ TRANSFERTS : ${count} validations (dont 200 cascades B+C)`);
@@ -151,49 +195,19 @@ function installer_AFFECTATIONS_(ss, logs) {
   const sheet = ss.getSheetByName('AFFECTATIONS_COMMUNES');
   if (!sheet) { logs.push('✗ AFFECTATIONS_COMMUNES manquante'); return 0; }
 
-  const params = ss.getSheetByName('PARAMETRES');
   const lastRow = sheet.getLastRow();
-  const fin = lastRow + 50; // marge pour ajouts
+  const nbLignes = lastRow + 50 - 1; // marge pour ajouts futurs
   let count = 0;
 
-  // A = Région
-  sheet.getRange(2, 1, fin - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('A2:A5'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange(2, 1,  nbLignes, 1).setDataValidation(regleListe_(ss, 'regions',   true));  // A = Région
   count++;
-
-  // B = Filiale
-  sheet.getRange(2, 2, fin - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('B2:B16'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange(2, 2,  nbLignes, 1).setDataValidation(regleListe_(ss, 'filiales',  true));  // B = Filiale
   count++;
-
-  // G = Actif
-  sheet.getRange(2, 7, fin - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('D2:D3'), true)
-      .setAllowInvalid(false).build()
-  );
+  sheet.getRange(2, 7,  nbLignes, 1).setDataValidation(regleListe_(ss, 'actif',     false)); // G = Actif
   count++;
-
-  // J = Rôle
-  sheet.getRange(2, 10, fin - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('I2:I6'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange(2, 10, nbLignes, 1).setDataValidation(regleListe_(ss, 'roles',     true));  // J = Rôle
   count++;
-
-  // K = Priorité
-  sheet.getRange(2, 11, fin - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('H2:H6'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange(2, 11, nbLignes, 1).setDataValidation(regleListe_(ss, 'priorites', true));  // K = Priorité
   count++;
 
   logs.push(`✓ AFFECTATIONS_COMMUNES : ${count} validations sur ${lastRow} lignes`);
@@ -207,33 +221,15 @@ function installer_PRODUITS_(ss, logs) {
   const sheet = ss.getSheetByName('PRODUITS_COMMERCIAUX');
   if (!sheet) { logs.push('✗ PRODUITS_COMMERCIAUX manquante'); return 0; }
 
-  const params = ss.getSheetByName('PARAMETRES');
   const lastRow = sheet.getLastRow();
-  const fin = lastRow + 50;
+  const nbLignes = lastRow + 50 - 1;
   let count = 0;
 
-  // A = Filiale
-  sheet.getRange(2, 1, fin - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('B2:B16'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange(2, 1, nbLignes, 1).setDataValidation(regleListe_(ss, 'filiales', true)); // A = Filiale
   count++;
-
-  // C = Produit
-  sheet.getRange(2, 3, fin - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('C2:C25'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange(2, 3, nbLignes, 1).setDataValidation(regleListe_(ss, 'produits', true)); // C = Produit
   count++;
-
-  // D = Actif
-  sheet.getRange(2, 4, fin - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('D2:D3'), true)
-      .setAllowInvalid(false).build()
-  );
+  sheet.getRange(2, 4, nbLignes, 1).setDataValidation(regleListe_(ss, 'actif',    false));// D = Actif
   count++;
 
   logs.push(`✓ PRODUITS_COMMERCIAUX : ${count} validations`);
@@ -247,28 +243,13 @@ function installer_EXCEPTIONS_(ss, logs) {
   const sheet = ss.getSheetByName('EXCEPTIONS_PRODUITS');
   if (!sheet) { logs.push('✗ EXCEPTIONS_PRODUITS manquante'); return 0; }
 
-  const params = ss.getSheetByName('PARAMETRES');
   let count = 0;
 
-  sheet.getRange('A2:A201').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('B2:B16'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange('A2:A201').setDataValidation(regleListe_(ss, 'filiales', true)); // A = Filiale
   count++;
-
-  sheet.getRange('D2:D201').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('C2:C25'), true)
-      .setAllowInvalid(true).build()
-  );
+  sheet.getRange('D2:D201').setDataValidation(regleListe_(ss, 'produits', true)); // D = Produit
   count++;
-
-  sheet.getRange('F2:F201').setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(params.getRange('D2:D3'), true)
-      .setAllowInvalid(false).build()
-  );
+  sheet.getRange('F2:F201').setDataValidation(regleListe_(ss, 'actif',    false));// F = Actif
   count++;
 
   logs.push(`✓ EXCEPTIONS_PRODUITS : ${count} validations`);

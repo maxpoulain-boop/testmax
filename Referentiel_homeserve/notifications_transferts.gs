@@ -3,6 +3,11 @@
  * NOTIFICATIONS TRANSFERTS + CP_MATCH — HomeServe Énergies Services
  * ============================================================
  *
+ * v5 — Améliorations de fond :
+ *   - purgerProprietesObsoletes() : nettoie chaque jour les flags d'envoi
+ *     orphelins (lignes supprimées, dates modifiées) → pas d'accumulation.
+ *   - Listes de référence pilotées par plages nommées (voir installer_validations.gs).
+ *
  * v4 — Corrections de revue :
  *   - Le handler de modification est renommé gererModificationActif (au lieu de
  *     onEdit) pour éviter la double exécution simple-trigger + installable.
@@ -60,6 +65,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('⚙️ Transferts')
     .addItem('🔧 Installer les déclencheurs', 'setupTriggers')
+    .addItem('🏷️ Installer les plages nommées', 'installerPlagesNommees')
     .addItem('📋 Installer les listes déroulantes', 'installerToutesLesValidations')
     .addItem('📝 Ajouter les notes d\'aide', 'ajouterNotes')
     .addSeparator()
@@ -67,6 +73,7 @@ function onOpen() {
     .addItem('👥 Voir les destinataires configurés', 'afficherDestinataires')
     .addSeparator()
     .addItem('🔍 Diagnostiquer la configuration', 'diagnostiquer')
+    .addItem('🧹 Purger les flags emails orphelins', 'purgerProprietesObsoletesUI')
     .addItem('🔄 Réinitialiser l\'historique emails', 'reinitialiserHistorique')
     .addItem('🔒 Protéger les feuilles de référence', 'protegerFeuillesReference')
     .addToUi();
@@ -192,6 +199,58 @@ function verifierRappelsQuotidiens() {
       props.setProperty(PROP_REMINDER + cle, 'true');
     }
   }
+
+  // Purge des flags orphelins (lignes supprimées, dates modifiées…)
+  purgerProprietesObsoletes();
+}
+
+// ============================================================
+// PURGE DES PROPRIÉTÉS ORPHELINES
+// ============================================================
+// Les flags d'envoi sont stockés par clé de contenu. Si une ligne est supprimée
+// ou si sa date/commercial change, l'ancienne clé devient orpheline et resterait
+// indéfiniment. Cette purge ne garde que les clés correspondant aux lignes
+// actuellement présentes dans TRANSFERTS. Appelée chaque jour par le rappel,
+// et disponible dans le menu.
+
+function purgerProprietesObsoletes() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_TRANSFERTS);
+  if (!sheet) return 0;
+
+  const clesValides = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+    data.forEach(row => {
+      const infos = lireRangee(row);
+      if (infos.filiale) clesValides[cleTransfert(infos)] = true;
+    });
+  }
+
+  const props = PropertiesService.getDocumentProperties();
+  let supprimes = 0;
+  props.getKeys().forEach(k => {
+    let cle = null;
+    if (k.indexOf(PROP_SENT) === 0)          cle = k.slice(PROP_SENT.length);
+    else if (k.indexOf(PROP_REMINDER) === 0) cle = k.slice(PROP_REMINDER.length);
+    if (cle !== null && !clesValides[cle]) {
+      props.deleteProperty(k);
+      supprimes++;
+    }
+  });
+
+  if (supprimes > 0) Logger.log('Purge : ' + supprimes + ' flag(s) orphelin(s) supprimé(s)');
+  return supprimes;
+}
+
+/** Version appelable depuis le menu, avec retour visuel. */
+function purgerProprietesObsoletesUI() {
+  const supprimes = purgerProprietesObsoletes();
+  SpreadsheetApp.getActive().toast(
+    supprimes + ' flag(s) orphelin(s) supprimé(s)',
+    '✓ Purge effectuée',
+    5
+  );
 }
 
 // ============================================================
