@@ -52,56 +52,46 @@ const CONFIG = {
     "step_precedent", "nb_imports_meme_step", "date_changement_step", "mouvement"
   ],
 
-  // Champs saisis par le manager (simplifiés). Stockés dans BASE, édités dans PILOTAGE.
+  // Champs saisis par le manager. Stockés dans BASE, édités dans PILOTAGE.
   MANAGER_HEADERS: [
-    "statut_manager", "niveau_chaleur", "blocage_principal",
+    "niveau_chaleur", "blocage_principal",
     "prochaine_action", "date_cible_relance", "montant_devis",
-    "probabilite_signature", "commentaire_manager", "date_maj_1to1"
+    "probabilite_signature", "commentaire_manager"
   ],
 
   // Vue PILOTAGE (ordre des colonnes affichées)
   PILOTAGE_HEADERS: [
-    "alerte",            // auto
-    "commercial",        // crm
-    "tiers",             // crm
-    "dossier",           // crm
-    "typetravaux",       // crm
-    "step",              // crm (étape CRM)
-    "mouvement",         // auto
-    "age_dossier_j",     // auto
-    "statut_manager",    // édit
-    "niveau_chaleur",    // édit
-    "blocage_principal", // édit
-    "prochaine_action",  // édit
-    "date_cible_relance",// édit
-    "montant_devis",     // édit
-    "probabilite_signature", // édit
-    "prevision_ponderee",// auto
-    "commentaire_manager",// édit
-    "date_maj_1to1"      // édit
+    "alerte",             // auto
+    "commercial",         // crm
+    "tiers",              // crm
+    "dossier",            // crm
+    "typetravaux",        // crm
+    "step",               // crm (étape CRM)
+    "mouvement",          // auto
+    "age_dossier_j",      // auto
+    "niveau_chaleur",     // édit
+    "blocage_principal",  // édit
+    "prochaine_action",   // édit
+    "date_cible_relance", // édit
+    "montant_devis",      // édit
+    "probabilite_signature",  // édit
+    "prevision_ponderee", // auto
+    "commentaire_manager" // édit
   ],
 
   // Listes déroulantes — c'est ici que tu ajustes les valeurs
   VALIDATIONS: {
-    "statut_manager": [
-      "", "À relancer", "En attente client", "En attente documents",
-      "En attente banque", "Injoignable", "Signature proche", "Signé", "Perdu"
-    ],
     "niveau_chaleur": ["Froid", "Tiède", "Chaud"],
     "blocage_principal": [
-      "Aucun", "Prix / RAC", "Aides", "Financement", "Doute client",
-      "Attente conjoint", "Injoignable", "Concurrent", "Technique", "Timing"
+      "Aucun", "Prix / RAC", "Attente avis d'imposition", "Financement",
+      "Doute client", "Injoignable", "Concurrent", "Technique", "Timing"
     ],
     "prochaine_action": [
       "", "Appeler le client", "Relancer devis", "Relancer documents",
-      "Revoir l'offre", "Arbitrage manager", "Attendre retour",
-      "Clôture (perdu)", "Signature attendue"
+      "Revoir l'offre", "Attendre retour", "Clôture (perdu)", "Signature attendue"
     ],
     "probabilite_signature": ["", "10%", "25%", "50%", "75%", "90%"]
   },
-
-  // Statuts considérés comme "dossier clos" (sortent du pilotage actif)
-  STATUTS_CLOS: ["Signé", "Perdu"],
 
   // Seuil de stagnation : nb d'imports au même stade avant alerte
   SEUIL_STAGNATION: 2,
@@ -350,11 +340,10 @@ function rebuildPilotage_(shBase, shPilote) {
     const dossier = String(baseRow[idxDossier] || "").trim();
     if (!dossier) return;
 
-    const statut = String(getCell_(baseRow, baseHeaders, "statut_manager") || "").trim();
     const disparu = String(getCell_(baseRow, baseHeaders, "disparu_du_crm") || "").trim() === "OUI";
 
-    // On sort du pilotage actif les dossiers clos ET disparus du CRM
-    if (CONFIG.STATUTS_CLOS.indexOf(statut) !== -1 && disparu) return;
+    // On sort du pilotage actif les dossiers disparus du CRM (signés ou perdus)
+    if (disparu) return;
 
     const datePivot = pickDatePivot_(baseRow, baseHeaders);
     const age = calcDaysFrom_(datePivot);
@@ -390,9 +379,6 @@ function rebuildPilotage_(shBase, shPilote) {
  * Moteur d'alertes : renvoie UN badge selon la priorité.
  */
 function computeAlerte_(baseRow, headers, calc) {
-  const statut = String(getCell_(baseRow, headers, "statut_manager") || "").trim();
-  if (CONFIG.STATUTS_CLOS.indexOf(statut) !== -1) return "✅";
-
   const disparu = String(getCell_(baseRow, headers, "disparu_du_crm") || "").trim() === "OUI";
   if (disparu) return "❓ À statuer";
 
@@ -460,21 +446,17 @@ function rebuildDashboard_(shBase, shDash) {
   let totFroid = 0, totTiede = 0, totChaud = 0;
 
   baseRows.forEach(row => {
-    const statut = String(getCell_(row, baseHeaders, "statut_manager") || "").trim();
     const disparu = String(getCell_(row, baseHeaders, "disparu_du_crm") || "").trim() === "OUI";
-    const clos = CONFIG.STATUTS_CLOS.indexOf(statut) !== -1;
-    if (clos && disparu) return; // dossier sorti du pilotage
+    if (disparu) return; // dossier sorti du pilotage
 
     const com = String(getCell_(row, baseHeaders, "commercial") || "—").trim() || "—";
     if (!stats[com]) {
       stats[com] = {
         actifs: 0, chaud: 0, tiede: 0, froid: 0,
-        alerte: 0, prevision: 0, signes: 0, sansAction: 0
+        alerte: 0, prevision: 0, sansAction: 0
       };
     }
     const s = stats[com];
-
-    if (statut === "Signé") { s.signes++; return; }
 
     s.actifs++;
 
@@ -499,14 +481,14 @@ function rebuildDashboard_(shBase, shDash) {
   // Construire le tableau de synthèse
   const headers = [
     "commercial", "dossiers_actifs", "chauds", "tièdes", "froids",
-    "en_alerte", "sans_action", "prévision_€", "signés"
+    "en_alerte", "sans_action", "prévision_€"
   ];
   const coms = Object.keys(stats).sort();
   const rows = coms.map(com => {
     const s = stats[com];
     return [
       com, s.actifs, s.chaud, s.tiede, s.froid,
-      s.alerte, s.sansAction, Math.round(s.prevision), s.signes
+      s.alerte, s.sansAction, Math.round(s.prevision)
     ];
   });
 
