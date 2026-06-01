@@ -375,6 +375,7 @@ function rebuildPilotage_(shBase, shPilote) {
   setupPilotageValidation_(shPilote);
   applyPilotageFormatting_(shPilote);
   trierPilotage_(shPilote);
+  protegerColonnesPilotage_(shPilote);
 }
 
 /**
@@ -452,6 +453,49 @@ function trierPilotage_(shPilote) {
   });
 
   shPilote.getRange(2, 1, data.length, lastCol).setValues(data);
+}
+
+/* ===================== PROTECTION COLONNES ===================== */
+
+/**
+ * Protège les colonnes en lecture seule dans PILOTAGE.
+ * Colonnes CRM + colonnes calculées = lecture seule pour tout le monde sauf le propriétaire.
+ * Colonnes manager = libres en écriture.
+ */
+function protegerColonnesPilotage_(shPilote) {
+  // Supprimer les protections existantes sur cet onglet
+  shPilote.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(p => p.remove());
+
+  const lastCol = shPilote.getLastColumn();
+  const lastRow = shPilote.getMaxRows();
+  if (lastCol === 0) return;
+
+  const headers = shPilote.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+
+  // Colonnes éditables par les commerciaux
+  const EDITABLES = new Set(CONFIG.MANAGER_HEADERS);
+
+  // Colonnes calculées auto (aussi éditables uniquement par le script)
+  const AUTO = new Set(["alerte", "mouvement", "age_dossier_j", "prevision_ponderee"]);
+
+  // On protège toutes les colonnes qui ne sont pas dans EDITABLES
+  headers.forEach((header, i) => {
+    if (EDITABLES.has(header)) return; // laissée libre
+
+    const colIndex = i + 1;
+    const range = shPilote.getRange(2, colIndex, Math.max(lastRow - 1, 1), 1);
+    const protection = range.protect();
+    protection.setDescription(
+      AUTO.has(header) ? "Calculé automatiquement" : "Donnée CRM — ne pas modifier"
+    );
+    // Avertissement : laisse modifier mais prévient (moins intrusif qu'un blocage total)
+    protection.setWarningOnly(true);
+  });
+
+  // Protéger aussi la ligne d'en-tête contre toute modification
+  const headerProtection = shPilote.getRange(1, 1, 1, lastCol).protect();
+  headerProtection.setDescription("En-têtes — ne pas modifier");
+  headerProtection.setWarningOnly(true);
 }
 
 /* ===================== DASHBOARD ===================== */
