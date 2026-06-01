@@ -54,7 +54,7 @@ const CONFIG = {
 
   // Champs saisis par le manager. Stockés dans BASE, édités dans PILOTAGE.
   MANAGER_HEADERS: [
-    "niveau_chaleur", "blocage_principal",
+    "statut", "niveau_chaleur", "blocage_principal",
     "prochaine_action", "date_cible_relance", "montant_devis",
     "probabilite_signature", "commentaire_manager"
   ],
@@ -62,6 +62,7 @@ const CONFIG = {
   // Vue PILOTAGE (ordre des colonnes affichées)
   PILOTAGE_HEADERS: [
     "alerte",             // auto
+    "statut",             // édit (Actif / Signé / Perdu)
     "commercial",         // crm
     "tiers",              // crm
     "dossier",            // crm
@@ -81,6 +82,7 @@ const CONFIG = {
 
   // Listes déroulantes — c'est ici que tu ajustes les valeurs
   VALIDATIONS: {
+    "statut": ["Actif", "Signé", "Perdu"],
     "niveau_chaleur": ["Froid", "Tiède", "Chaud"],
     "blocage_principal": [
       "Aucun", "Prix / RAC", "Attente avis d'imposition", "Financement",
@@ -379,6 +381,10 @@ function rebuildPilotage_(shBase, shPilote) {
  * Moteur d'alertes : renvoie UN badge selon la priorité.
  */
 function computeAlerte_(baseRow, headers, calc) {
+  const statut = String(getCell_(baseRow, headers, "statut") || "Actif").trim();
+  if (statut === "Signé") return "✅ Signé";
+  if (statut === "Perdu") return "❌ Perdu";
+
   const disparu = String(getCell_(baseRow, headers, "disparu_du_crm") || "").trim() === "OUI";
   if (disparu) return "❓ À statuer";
 
@@ -408,12 +414,29 @@ function trierPilotage_(shPilote) {
 
   const idxCom = headers.indexOf("commercial");
   const idxAlerte = headers.indexOf("alerte");
+  const idxStatut = headers.indexOf("statut");
   const idxAge = headers.indexOf("age_dossier_j");
 
-  // Rang d'alerte : les vraies alertes remontent, ✅ en bas
-  const alerteRank = a => (String(a || "").indexOf("✅") !== -1 ? 9 : 1);
+  // Rang statut : Actif en haut, Signé/Perdu en bas
+  const statutRank = s => {
+    if (s === "Signé" || s === "Perdu") return 9;
+    return 1;
+  };
+
+  // Rang alerte : alertes actives remontent, ✅ en bas
+  const alerteRank = a => {
+    const str = String(a || "");
+    if (str.indexOf("✅") !== -1 || str.indexOf("❌") !== -1) return 9;
+    return 1;
+  };
 
   data.sort((a, b) => {
+    const sA = idxStatut !== -1 ? String(a[idxStatut] || "Actif").trim() : "Actif";
+    const sB = idxStatut !== -1 ? String(b[idxStatut] || "Actif").trim() : "Actif";
+    const srA = statutRank(sA);
+    const srB = statutRank(sB);
+    if (srA !== srB) return srA - srB;
+
     const cA = String(a[idxCom] || "").toLowerCase().trim();
     const cB = String(b[idxCom] || "").toLowerCase().trim();
     if (cA < cB) return -1;
@@ -425,7 +448,7 @@ function trierPilotage_(shPilote) {
 
     const ageA = (idxAge !== -1 && a[idxAge] !== "") ? Number(a[idxAge]) : -1;
     const ageB = (idxAge !== -1 && b[idxAge] !== "") ? Number(b[idxAge]) : -1;
-    return ageB - ageA; // du plus vieux au plus récent
+    return ageB - ageA;
   });
 
   shPilote.getRange(2, 1, data.length, lastCol).setValues(data);
@@ -447,16 +470,20 @@ function rebuildDashboard_(shBase, shDash) {
 
   baseRows.forEach(row => {
     const disparu = String(getCell_(row, baseHeaders, "disparu_du_crm") || "").trim() === "OUI";
-    if (disparu) return; // dossier sorti du pilotage
+    const statut = String(getCell_(row, baseHeaders, "statut") || "Actif").trim();
 
     const com = String(getCell_(row, baseHeaders, "commercial") || "—").trim() || "—";
     if (!stats[com]) {
       stats[com] = {
         actifs: 0, chaud: 0, tiede: 0, froid: 0,
-        alerte: 0, prevision: 0, sansAction: 0
+        alerte: 0, prevision: 0, sansAction: 0, signes: 0, perdus: 0
       };
     }
     const s = stats[com];
+
+    if (statut === "Signé") { s.signes++; return; }
+    if (statut === "Perdu") { s.perdus++; return; }
+    if (disparu) return;
 
     s.actifs++;
 
@@ -481,14 +508,14 @@ function rebuildDashboard_(shBase, shDash) {
   // Construire le tableau de synthèse
   const headers = [
     "commercial", "dossiers_actifs", "chauds", "tièdes", "froids",
-    "en_alerte", "sans_action", "prévision_€"
+    "en_alerte", "sans_action", "prévision_€", "signés", "perdus"
   ];
   const coms = Object.keys(stats).sort();
   const rows = coms.map(com => {
     const s = stats[com];
     return [
       com, s.actifs, s.chaud, s.tiede, s.froid,
-      s.alerte, s.sansAction, Math.round(s.prevision)
+      s.alerte, s.sansAction, Math.round(s.prevision), s.signes, s.perdus
     ];
   });
 
@@ -497,7 +524,7 @@ function rebuildDashboard_(shBase, shDash) {
     const tot = rows.reduce((acc, r) => {
       for (let i = 1; i < r.length; i++) acc[i] += Number(r[i]) || 0;
       return acc;
-    }, ["TOTAL", 0, 0, 0, 0, 0, 0, 0, 0]);
+    }, ["TOTAL", 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     rows.push(tot);
   }
 
@@ -652,6 +679,16 @@ function applyPilotageFormatting_(shPilote) {
       rules.push(SpreadsheetApp.newConditionalFormatRule()
         .whenTextContains(txt).setBackground(color).setRanges([colAlerte]).build());
     });
+  }
+
+  // Couleur sur la colonne STATUT
+  const idxStatut = headers.indexOf("statut") + 1;
+  if (idxStatut > 0) {
+    const colStatut = shPilote.getRange(2, idxStatut, Math.max(lastRow - 1, 1), 1);
+    rules.push(SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("Signé").setBackground("#d9ead3").setFontColor("#274e13").setRanges([colStatut]).build());
+    rules.push(SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("Perdu").setBackground("#f4cccc").setFontColor("#660000").setRanges([colStatut]).build());
   }
 
   // Couleur sur la colonne CHALEUR
