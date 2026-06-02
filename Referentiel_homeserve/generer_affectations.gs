@@ -179,6 +179,25 @@ function carteRegions_(dptValues) {
   return carte;
 }
 
+/**
+ * Enrichit la carte département → région avec les régions déjà présentes dans
+ * AFFECTATIONS_COMMUNES (A = Région, C = CP). N'écrase PAS DPT_SOURCE : ne
+ * complète que les départements encore inconnus. Le département est déduit des
+ * 2 premiers chiffres du CP (ex. 06000 → "06").
+ */
+function carteRegionsDepuisAffectations_(affectSheet, carte) {
+  const last = affectSheet.getLastRow();
+  if (last < 2) return;
+  const data = affectSheet.getRange(2, 1, last - 1, 3).getValues(); // A=Région, B=Filiale, C=CP
+  for (let i = 0; i < data.length; i++) {
+    const reg = data[i][0];
+    const cp = normaliserCP(data[i][2]);
+    if (!reg || !cp) continue;
+    const dep = cp.substring(0, 2);
+    if (!carte[dep]) carte[dep] = reg;
+  }
+}
+
 /** Liste des produits du référentiel (pour expansion de "Tous"). */
 function listeProduits_(ss) {
   const params = ss.getSheetByName(GEN.PARAMS);
@@ -246,6 +265,11 @@ function genererAffectations() {
   // --- Lecture DPT_SOURCE ---
   const dpt = dptSheet.getDataRange().getValues(); // 0=Région,2=Filiale,3=Dép,4=CP,5=Nom
   const carteReg = carteRegions_(dpt);
+
+  // Repli : pour les départements sans région dans DPT_SOURCE, on RÉUTILISE les
+  // régions déjà saisies (à la main ou générées) dans AFFECTATIONS_COMMUNES.
+  // Ainsi une région complétée manuellement persiste aux régénérations suivantes.
+  carteRegionsDepuisAffectations_(affectSheet, carteReg);
 
   // PERF : on pré-calcule UNE SEULE FOIS les valeurs normalisées de chaque commune
   // (CP et nom) au lieu de les recalculer pour chaque règle. C'est ce qui évite
