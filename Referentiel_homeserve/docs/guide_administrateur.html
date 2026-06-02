@@ -473,6 +473,49 @@
   <h3>Filiales actives (suite à la fusion VIK Energies)</h3>
   <p>Aujard, Cerise Energies, Chauffage du Nord, DEC Energies, EGS Energies, GD Energies, GEODIS, JCM Confort, Lepretre Energies, Mure Energies, Prigent Abiven, Roussin Energies, SBF Energies, SMT Energies, <strong>VIK Energies</strong> (fusion ID Energies + PH Energies + Conviflamme + Concept Habitat).</p>
 
+  <h3>Ajouter une filiale</h3>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <strong>Déclarer la filiale dans PARAMETRES</strong>
+        Colonne B : ajouter le nom à la suite (ex. <code>B17</code> si tu passes à 16 filiales).
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <strong>Ajouter une ligne dans <code>_COMMERCIAUX_PAR_FILIALE_H</code></strong>
+        Colonne A = nom de la filiale. Les commerciaux viendront en B, C, D… (tu peux les
+        laisser vides pour l'instant et les compléter au fil des informations reçues).
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <strong>Mettre à jour les listes déroulantes</strong>
+        <span class="menu-path">⚙️ Transferts → Installer les listes déroulantes</span><br>
+        Recrée les plages nommées (dont <code>PARAM_FILIALES</code>) et toutes les cascades.
+        La nouvelle filiale devient sélectionnable partout.
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <strong>Ajouter ses commerciaux et leurs secteurs</strong>
+        Suivre la procédure habituelle décrite plus haut dans
+        <strong>« Tâche courante : ajouter un commercial et son secteur »</strong>.
+      </div>
+    </div>
+  </div>
+
+  <div class="alert alert-warning">
+    Si tu sautes l'étape 3, la plage nommée <code>PARAM_FILIALES</code> pointe encore sur
+    l'ancienne plage (ex. <code>B2:B16</code>) — la nouvelle filiale n'apparaîtra dans
+    aucune liste déroulante malgré sa présence dans PARAMETRES.
+  </div>
+
   <h3>Ajouter un commercial</h3>
   <p>Procédure complète (déclaration + secteur + produits) décrite plus haut dans
   <strong>« Tâche courante : ajouter un commercial et son secteur »</strong>.</p>
