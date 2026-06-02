@@ -197,7 +197,7 @@ function installer_TRANSFERTS_(ss, logs) {
   count++;
   sheet.getRange('H2:H201').setDataValidation(regleListe_(ss, 'produitsT', false)); // H = Produit (+ Tous)
   count++;
-  sheet.getRange('L2:L201').setDataValidation(regleListe_(ss, 'regions', false));   // L = Région (→ responsable régional)
+  sheet.getRange('M2:M201').setDataValidation(regleListe_(ss, 'regions', false));   // M = Région (→ responsable régional)
   count++;
 
   logs.push(`✓ TRANSFERTS : ${count} validations (dont 200 cascades B+C)`);
