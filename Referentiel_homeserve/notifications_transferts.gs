@@ -49,9 +49,7 @@ const COL_COMMENTAIRE= 11;
 
 const CELL_MODE           = 'C6';
 const CELL_EMAIL_TEST     = 'C9';
-const CELL_PROD_1         = 'C12';
-const CELL_PROD_2         = 'C13';
-const CELL_PROD_REGIONAL  = 'C14';
+// Destinataires PROD : C12 jusqu'à C50 (plage lue dynamiquement, cellules vides ignorées)
 
 // Préfixes pour PropertiesService — clés basées sur le contenu, pas le n° de ligne
 const PROP_SENT     = 'sent_v_';
@@ -375,11 +373,11 @@ function obtenirDestinataires() {
     return validerEmails([sheet.getRange(CELL_EMAIL_TEST).getValue()]);
   }
   if (mode === 'PROD') {
-    return validerEmails([
-      sheet.getRange(CELL_PROD_1).getValue(),
-      sheet.getRange(CELL_PROD_2).getValue(),
-      sheet.getRange(CELL_PROD_REGIONAL).getValue(),
-    ]);
+    // Lit toute la plage C12:C50 — ajouter un destinataire = ajouter une ligne,
+    // sans toucher au code. Les cellules vides sont simplement ignorées.
+    const plage = sheet.getRange('C12:C50').getValues();
+    const emails = plage.map(r => r[0]).filter(v => v);
+    return validerEmails(emails);
   }
   return [];
 }
