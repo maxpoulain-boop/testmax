@@ -434,14 +434,16 @@
   <table>
     <tr><th>Cellule</th><th>Contenu</th></tr>
     <tr><td><code>CONTACTS!C6</code></td><td><code>PROD</code></td></tr>
-    <tr><td><code>CONTACTS!C12</code></td><td>Email destinataire fixe 1 (ex : responsable transferts)</td></tr>
-    <tr><td><code>CONTACTS!C13</code></td><td>Email destinataire fixe 2</td></tr>
-    <tr><td><code>CONTACTS!C14</code></td><td>Email responsable régional</td></tr>
+    <tr><td><code>CONTACTS!C12</code> et suivantes</td><td>Une adresse email par ligne (C12, C13, C14, C15…), <strong>autant que nécessaire</strong></td></tr>
   </table>
 
   <div class="alert alert-info">
     En mode <strong>TEST</strong>, seul l'email de C9 reçoit les notifications.<br>
-    En mode <strong>PROD</strong>, les 3 destinataires de C12/C13/C14 reçoivent.
+    En mode <strong>PROD</strong>, <strong>tous</strong> les emails saisis dans la colonne C à partir de la ligne 12 reçoivent les notifications — <strong>sans limite de nombre</strong>.
+  </div>
+
+  <div class="alert alert-info">
+    <strong>Ajouter / retirer un destinataire</strong> : il suffit d'écrire (ou d'effacer) une adresse dans la colonne C à partir de C12. Aucune intervention sur le code n'est nécessaire. Les lignes vides intercalées sont ignorées, et seules les adresses contenant « @ » sont retenues.
   </div>
 
   <h3>Quand un email est-il envoyé ?</h3>
@@ -458,13 +460,19 @@
 
   <table>
     <tr><th>Colonne PARAMETRES</th><th>Contenu</th><th>Utilisé dans</th></tr>
-    <tr><td><code>A2:A5</code></td><td>Régions (4)</td><td>AFFECTATIONS_COMMUNES col. A</td></tr>
-    <tr><td><code>B2:B16</code></td><td>Filiales (15)</td><td>Tous les onglets</td></tr>
-    <tr><td><code>C2:C25</code></td><td>Produits (24)</td><td>PRODUITS_COMMERCIAUX, EXCEPTIONS, RECHERCHE</td></tr>
-    <tr><td><code>D2:D3</code></td><td>Actif / Non</td><td>Colonne Actif partout</td></tr>
-    <tr><td><code>E2:E6</code></td><td>Motifs de transfert</td><td>TRANSFERTS col. F</td></tr>
-    <tr><td><code>J2:J26</code></td><td>Produits + "Tous"</td><td>TRANSFERTS col. H</td></tr>
+    <tr><td><code>A</code> (dès A2)</td><td>Régions</td><td>AFFECTATIONS_COMMUNES col. A</td></tr>
+    <tr><td><code>B</code> (dès B2)</td><td>Filiales</td><td>Tous les onglets</td></tr>
+    <tr><td><code>C</code> (dès C2)</td><td>Produits</td><td>PRODUITS_COMMERCIAUX, EXCEPTIONS, RECHERCHE</td></tr>
+    <tr><td><code>D</code> (dès D2)</td><td>Actif / Non</td><td>Colonne Actif partout</td></tr>
+    <tr><td><code>E</code> (dès E2)</td><td>Motifs de transfert</td><td>TRANSFERTS col. F</td></tr>
+    <tr><td><code>H</code> (dès H2)</td><td>Priorités</td><td>AFFECTATIONS_COMMUNES col. K</td></tr>
+    <tr><td><code>I</code> (dès I2)</td><td>Rôles (Principal / Co-affecté)</td><td>AFFECTATIONS_COMMUNES col. J</td></tr>
+    <tr><td><code>J</code> (dès J2)</td><td>Produits + "Tous"</td><td>TRANSFERTS col. H</td></tr>
   </table>
+
+  <div class="alert alert-info">
+    <strong>Plages auto-détectées :</strong> il n'est plus nécessaire d'étendre manuellement les plages nommées. Chaque liste est lue de la ligne 2 jusqu'à la <strong>dernière cellule non-vide</strong> de sa colonne. Ajouter une filiale ou un produit dans PARAMETRES suffit — la plage s'ajuste seule au prochain « Installer les listes déroulantes ».
+  </div>
 
   <div class="alert alert-warning">
     Après toute modification de PARAMETRES, relancer <span class="menu-path">⚙️ Transferts → Installer les listes déroulantes</span> pour propager les changements.
@@ -480,7 +488,8 @@
       <div class="step-num">1</div>
       <div class="step-content">
         <strong>Déclarer la filiale dans PARAMETRES</strong>
-        Colonne B : ajouter le nom à la suite (ex. <code>B17</code> si tu passes à 16 filiales).
+        Colonne B : ajouter le nom sur la première ligne libre, à la suite des autres.
+        Inutile d'étendre la plage nommée à la main — elle est recalculée automatiquement.
       </div>
     </div>
     <div class="step">
@@ -496,8 +505,9 @@
       <div class="step-content">
         <strong>Mettre à jour les listes déroulantes</strong>
         <span class="menu-path">⚙️ Transferts → Installer les listes déroulantes</span><br>
-        Recrée les plages nommées (dont <code>PARAM_FILIALES</code>) et toutes les cascades.
-        La nouvelle filiale devient sélectionnable partout.
+        Recrée les plages nommées (dont <code>PARAM_FILIALES</code>, recalculée jusqu'à la
+        dernière filiale saisie) et toutes les cascades. La nouvelle filiale devient
+        sélectionnable partout.
       </div>
     </div>
     <div class="step">

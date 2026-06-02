@@ -57,7 +57,7 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 - Email immédiat à la validation
 - Rappel automatique 3 jours ouvrés avant la date de début (déclencheur quotidien à 7h)
 - Email d'annulation si Actif repasse à Non
-- Mode TEST (1 email) / PROD (3 emails) basculable dans la feuille CONTACTS
+- Mode TEST (1 email en C9) / PROD (nombre **illimité** d'emails — colonne C à partir de C12, une adresse par ligne) basculable dans la feuille CONTACTS
 
 ## Installation (après import Excel → Sheets)
 
@@ -113,18 +113,20 @@ Chauffage solaire, Poêle à granulés, Pompe à chaleur Air/Eau, Système solai
 
 | Plage nommée | Adresse | Contenu |
 |---|---|---|
-| `PARAM_REGIONS` | A2:A5 | Régions |
-| `PARAM_FILIALES` | B2:B16 | Filiales |
-| `PARAM_PRODUITS` | C2:C25 | Produits |
-| `PARAM_ACTIF` | D2:D3 | Oui / Non |
-| `PARAM_MOTIFS` | E2:E6 | Motifs |
-| `PARAM_PRIORITES` | H2:H6 | Priorités |
-| `PARAM_ROLES` | I2:I6 | Rôles |
-| `PARAM_PRODUITS_T` | J2:J26 | Produits + "Tous" |
+| `PARAM_REGIONS` | colonne A (dès A2) | Régions |
+| `PARAM_FILIALES` | colonne B (dès B2) | Filiales |
+| `PARAM_PRODUITS` | colonne C (dès C2) | Produits |
+| `PARAM_ACTIF` | colonne D (dès D2) | Oui / Non |
+| `PARAM_MOTIFS` | colonne E (dès E2) | Motifs |
+| `PARAM_PRIORITES` | colonne H (dès H2) | Priorités |
+| `PARAM_ROLES` | colonne I (dès I2) | Rôles |
+| `PARAM_PRODUITS_T` | colonne J (dès J2) | Produits + "Tous" |
 
-> Pour agrandir une liste (ex : 16e filiale), étendre la plage nommée via
-> `Données → Plages nommées` **puis** relancer "Installer les listes déroulantes".
-> Si on préfère, modifier l'adresse `a1` dans l'objet `PARAM` du script suffit aussi.
+> **Plages auto-détectées (v6)** : chaque plage est calculée de la ligne 2
+> jusqu'à la dernière cellule non-vide de sa colonne. Pour agrandir une liste
+> (ex : ajouter une filiale), il suffit de l'écrire dans PARAMETRES **puis** de
+> relancer "Installer les listes déroulantes" — plus besoin de toucher au code
+> ni d'étendre la plage nommée à la main.
 
 ### 3. `notes_helper.gs`
 Info-bulles au survol (TRANSFERTS colonnes B, C, I + RECHERCHE) :
