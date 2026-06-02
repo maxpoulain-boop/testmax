@@ -417,8 +417,19 @@ function genererAffectations() {
     idxFiliale: 1, idxCP: 2, idxVille: 3, idxCommercial: 4,
     placeholders: ['A AFFECTER', ''],
   };
-  ecrireEnPreservantManuel_(affectSheet, lignesAffect, GEN.AFFECT_COLS, GEN.AFFECT_ORIGINE, 'Origine', optPlaceholder);
-  ecrireEnPreservantManuel_(produitsSheet, lignesProduits, GEN.PRODUITS_COLS, GEN.PRODUITS_ORIGINE, 'Origine', null);
+  try {
+    ecrireEnPreservantManuel_(affectSheet, lignesAffect, GEN.AFFECT_COLS, GEN.AFFECT_ORIGINE, 'Origine', optPlaceholder);
+    ecrireEnPreservantManuel_(produitsSheet, lignesProduits, GEN.PRODUITS_COLS, GEN.PRODUITS_ORIGINE, 'Origine', null);
+  } catch (e) {
+    ss.toast('Échec de l\'écriture', '✗ Génération', 5);
+    ui.alert('Génération interrompue',
+      'Une erreur est survenue pendant l\'écriture dans les feuilles :\n\n' + e.message +
+      '\n\nCela peut arriver si le service Google Sheets est momentanément indisponible. ' +
+      'Réessayez dans quelques minutes. Aucune donnée manuelle n\'a été perdue ' +
+      '(les lignes « généré » seront simplement régénérées au prochain essai).',
+      ui.ButtonSet.OK);
+    return;
+  }
 
   ss.toast('Terminé', '✓ Génération', 5);
   ui.alert('Génération terminée',

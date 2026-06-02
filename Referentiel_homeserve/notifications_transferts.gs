@@ -373,9 +373,13 @@ function obtenirDestinataires() {
     return validerEmails([sheet.getRange(CELL_EMAIL_TEST).getValue()]);
   }
   if (mode === 'PROD') {
-    // Lit toute la plage C12:C50 — ajouter un destinataire = ajouter une ligne,
-    // sans toucher au code. Les cellules vides sont simplement ignorées.
-    const plage = sheet.getRange('C12:C50').getValues();
+    // Lit la colonne C à partir de la ligne 12 jusqu'à la dernière ligne non-vide.
+    // Aucune limite : ajouter un destinataire = ajouter une ligne, sans toucher au code.
+    // Les cellules vides intercalées sont simplement ignorées.
+    const PREMIERE_LIGNE = 12;
+    const derniere = sheet.getLastRow();
+    if (derniere < PREMIERE_LIGNE) return [];
+    const plage = sheet.getRange(PREMIERE_LIGNE, 3, derniere - PREMIERE_LIGNE + 1, 1).getValues();
     const emails = plage.map(r => r[0]).filter(v => v);
     return validerEmails(emails);
   }
