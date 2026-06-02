@@ -519,12 +519,28 @@ function ecrireEnPreservantManuel_(sheet, lignesGenerees, nbCols, colOrigine, ti
     })
   );
 
-  // PERF : écriture par blocs pour ne pas dépasser le délai du service Sheets
-  // sur de très gros volumes (plusieurs milliers de lignes).
-  const BLOC = 5000;
+  // PERF : écriture par blocs pour ne pas dépasser le délai du service Sheets.
+  // On ne fait PAS de flush() entre les blocs (chaque flush relancerait un
+  // recalcul complet des formules dépendantes). Chaque écriture est protégée
+  // par un réessai en cas d'erreur transitoire ("Service indisponible").
+  const BLOC = 10000;
   for (let depart = 0; depart < tout.length; depart += BLOC) {
     const lot = tout.slice(depart, depart + BLOC);
-    sheet.getRange(2 + depart, 1, lot.length, colOrigine).setValues(lot);
-    SpreadsheetApp.flush();
+    setValuesAvecRetry_(sheet.getRange(2 + depart, 1, lot.length, colOrigine), lot);
+  }
+}
+
+/** setValues protégé par réessais (back-off) contre les erreurs transitoires de Sheets. */
+function setValuesAvecRetry_(range, values) {
+  let essais = 0;
+  while (true) {
+    try {
+      range.setValues(values);
+      return;
+    } catch (e) {
+      essais++;
+      if (essais >= 4) throw e;
+      Utilities.sleep(2000 * essais); // 2s, 4s, 6s
+    }
   }
 }
