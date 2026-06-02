@@ -23,21 +23,35 @@
  */
 
 // === Source unique des listes de référence (onglet PARAMETRES) ===
-// nom = nom de la plage nommée Google Sheets ; a1 = adresse de repli si absente.
+// nom = nom de la plage nommée Google Sheets ; col = colonne (1-based) ; ligne = ligne de départ.
+// La plage est calculée dynamiquement jusqu'à la dernière cellule non-vide de la colonne.
 const PARAM = {
-  regions:   { nom: 'PARAM_REGIONS',    a1: 'A2:A5'  },
-  filiales:  { nom: 'PARAM_FILIALES',   a1: 'B2:B16' },
-  produits:  { nom: 'PARAM_PRODUITS',   a1: 'C2:C25' },
-  actif:     { nom: 'PARAM_ACTIF',      a1: 'D2:D3'  },
-  motifs:    { nom: 'PARAM_MOTIFS',     a1: 'E2:E6'  },
-  priorites: { nom: 'PARAM_PRIORITES',  a1: 'H2:H6'  },
-  roles:     { nom: 'PARAM_ROLES',      a1: 'I2:I6'  },
-  produitsT: { nom: 'PARAM_PRODUITS_T', a1: 'J2:J26' },
+  regions:   { nom: 'PARAM_REGIONS',    col: 1,  ligne: 2 },
+  filiales:  { nom: 'PARAM_FILIALES',   col: 2,  ligne: 2 },
+  produits:  { nom: 'PARAM_PRODUITS',   col: 3,  ligne: 2 },
+  actif:     { nom: 'PARAM_ACTIF',      col: 4,  ligne: 2 },
+  motifs:    { nom: 'PARAM_MOTIFS',     col: 5,  ligne: 2 },
+  priorites: { nom: 'PARAM_PRIORITES',  col: 8,  ligne: 2 },
+  roles:     { nom: 'PARAM_ROLES',      col: 9,  ligne: 2 },
+  produitsT: { nom: 'PARAM_PRODUITS_T', col: 10, ligne: 2 },
 };
 
 /**
+ * Retourne la plage d'une liste dans PARAMETRES en détectant la dernière ligne non-vide.
+ * Garantit au moins 1 ligne même si la colonne est vide (évite une erreur de plage).
+ */
+function plageDynamique_(params, def) {
+  const colData = params.getRange(def.ligne, def.col, params.getLastRow() - def.ligne + 2, 1).getValues();
+  let derniereLigne = def.ligne;
+  for (let i = 0; i < colData.length; i++) {
+    if (colData[i][0] !== '' && colData[i][0] !== null) derniereLigne = def.ligne + i;
+  }
+  return params.getRange(def.ligne, def.col, derniereLigne - def.ligne + 1, 1);
+}
+
+/**
  * Retourne la plage source d'une liste : la plage nommée si elle existe,
- * sinon l'adresse A1 figée dans PARAMETRES.
+ * sinon calcul dynamique de la dernière ligne non-vide dans PARAMETRES.
  */
 function plageSource_(ss, cle) {
   const def = PARAM[cle];
@@ -46,12 +60,13 @@ function plageSource_(ss, cle) {
   if (nommee) return nommee;
   const params = ss.getSheetByName('PARAMETRES');
   if (!params) throw new Error('Onglet PARAMETRES introuvable');
-  return params.getRange(def.a1);
+  return plageDynamique_(params, def);
 }
 
 /**
- * Crée (ou recrée) toutes les plages nommées à partir des adresses A1 de PARAM.
- * À lancer une fois, ou après avoir modifié la structure de PARAMETRES.
+ * Crée (ou recrée) toutes les plages nommées en détectant dynamiquement
+ * la dernière ligne non-vide dans chaque colonne de PARAMETRES.
+ * Ajouter une filiale/produit dans PARAMETRES suffit — aucune modification du code.
  */
 function installerPlagesNommees() {
   const ss = SpreadsheetApp.getActive();
@@ -70,11 +85,11 @@ function installerPlagesNommees() {
   let count = 0;
   Object.keys(PARAM).forEach(cle => {
     const def = PARAM[cle];
-    ss.setNamedRange(def.nom, params.getRange(def.a1));
+    ss.setNamedRange(def.nom, plageDynamique_(params, def));
     count++;
   });
 
-  ss.toast(count + ' plages nommées créées', '✓ Plages nommées', 5);
+  ss.toast(count + ' plages nommées créées (détection automatique)', '✓ Plages nommées', 5);
   return count;
 }
 
