@@ -165,11 +165,15 @@ function installer_TRANSFERTS_(ss, logs) {
   sheet.getRange('A1:Z201').clearDataValidations();
   let count = 0;
 
-  // A = Filiale
-  sheet.getRange('A2:A201').setDataValidation(regleListe_(ss, 'filiales', false));
+  // A = Région (→ responsable régional)
+  sheet.getRange('A2:A201').setDataValidation(regleListe_(ss, 'regions', false));
   count++;
 
-  // B et C = Commerciaux filtrés par filiale (cascade via _DDL_TRANSFERTS)
+  // B = Filiale
+  sheet.getRange('B2:B201').setDataValidation(regleListe_(ss, 'filiales', false));
+  count++;
+
+  // C et D = Commerciaux filtrés par filiale (cascade via _DDL_TRANSFERTS)
   // Chaque ligne a sa propre plage source → 200 règles distinctes, appliquées
   // en 2 appels groupés (setDataValidations) au lieu de 400.
   const ddlSheet = ss.getSheetByName('_DDL_TRANSFERTS');
@@ -184,23 +188,21 @@ function installer_TRANSFERTS_(ss, logs) {
           .build()
       ]);
     }
-    sheet.getRange(2, 2, 200, 1).setDataValidations(regles); // colonne B en 1 appel
     sheet.getRange(2, 3, 200, 1).setDataValidations(regles); // colonne C en 1 appel
+    sheet.getRange(2, 4, 200, 1).setDataValidations(regles); // colonne D en 1 appel
     count += 2;
   } else {
-    logs.push('⚠ _DDL_TRANSFERTS manquante — colonnes B et C sans cascade');
+    logs.push('⚠ _DDL_TRANSFERTS manquante — colonnes C et D sans cascade');
   }
 
-  sheet.getRange('F2:F201').setDataValidation(regleListe_(ss, 'motifs', true));     // F = Motif
+  sheet.getRange('G2:G201').setDataValidation(regleListe_(ss, 'motifs', true));     // G = Motif
   count++;
-  sheet.getRange('G2:G201').setDataValidation(regleListe_(ss, 'actif', false));     // G = Actif
+  sheet.getRange('H2:H201').setDataValidation(regleListe_(ss, 'actif', false));     // H = Actif
   count++;
-  sheet.getRange('H2:H201').setDataValidation(regleListe_(ss, 'produitsT', false)); // H = Produit (+ Tous)
-  count++;
-  sheet.getRange('M2:M201').setDataValidation(regleListe_(ss, 'regions', false));   // M = Région (→ responsable régional)
+  sheet.getRange('I2:I201').setDataValidation(regleListe_(ss, 'produitsT', false)); // I = Produit (+ Tous)
   count++;
 
-  logs.push(`✓ TRANSFERTS : ${count} validations (dont 200 cascades B+C)`);
+  logs.push(`✓ TRANSFERTS : ${count} validations (dont 200 cascades C+D)`);
   return count;
 }
 

@@ -23,10 +23,10 @@ function ajouterNotes() {
     const notesCP  = Array(200).fill([noteCP]);
     const notesCom = Array(200).fill([noteCom]);
 
-    transferts.getRange('I2:I201').setNotes(notesCP);
-    transferts.getRange('B2:B201').setNotes(notesCom);
+    transferts.getRange('J2:J201').setNotes(notesCP);
     transferts.getRange('C2:C201').setNotes(notesCom);
-    transferts.getRange('I1').setNote(noteCP);
+    transferts.getRange('D2:D201').setNotes(notesCom);
+    transferts.getRange('J1').setNote(noteCP);
     count++;
   }
 
@@ -59,10 +59,10 @@ function retirerNotes() {
 
   const transferts = ss.getSheetByName('TRANSFERTS');
   if (transferts) {
-    transferts.getRange('B2:B201').clearNote();
     transferts.getRange('C2:C201').clearNote();
-    transferts.getRange('I2:I201').clearNote();
-    transferts.getRange('I1').clearNote();
+    transferts.getRange('D2:D201').clearNote();
+    transferts.getRange('J2:J201').clearNote();
+    transferts.getRange('J1').clearNote();
   }
 
   const recherche = ss.getSheetByName('RECHERCHE');

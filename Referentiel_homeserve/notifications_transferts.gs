@@ -35,20 +35,20 @@
 const SHEET_TRANSFERTS  = 'TRANSFERTS';
 const SHEET_CONTACTS    = 'CONTACTS';
 
-const COL_FILIALE    = 1;
-const COL_REMPLACE   = 2;
-const COL_NOUVEAU    = 3;
-const COL_DATE_DEBUT = 4;
-const COL_DATE_FIN   = 5;
-const COL_MOTIF      = 6;
-const COL_ACTIF      = 7;
-const COL_PRODUIT    = 8;
-const COL_CP         = 9;
-const COL_VILLE      = 10;
-const COL_COMMENTAIRE= 11;
-const COL_REGION     = 13; // M = Région concernée (liste déroulante) → responsable régional notifié
+const COL_REGION     = 1;  // A = Région concernée (liste déroulante) → responsable régional notifié
+const COL_FILIALE    = 2;
+const COL_REMPLACE   = 3;
+const COL_NOUVEAU    = 4;
+const COL_DATE_DEBUT = 5;
+const COL_DATE_FIN   = 6;
+const COL_MOTIF      = 7;
+const COL_ACTIF      = 8;
+const COL_PRODUIT    = 9;
+const COL_CP         = 10;
+const COL_VILLE      = 11;
+const COL_COMMENTAIRE= 12;
 
-// Nombre de colonnes lues sur une ligne TRANSFERTS (jusqu'à la Région incluse)
+// Nombre de colonnes lues sur une ligne TRANSFERTS (A → M, Clé transfert incluse)
 const NB_COLS_TRANSFERTS = 13;
 
 const CELL_MODE           = 'C6';
