@@ -247,6 +247,22 @@ function genererAffectations() {
   const dpt = dptSheet.getDataRange().getValues(); // 0=Région,2=Filiale,3=Dép,4=CP,5=Nom
   const carteReg = carteRegions_(dpt);
 
+  // PERF : on pré-calcule UNE SEULE FOIS les valeurs normalisées de chaque commune
+  // (CP et nom) au lieu de les recalculer pour chaque règle. C'est ce qui évite
+  // le dépassement de délai quand il y a beaucoup de règles.
+  const N = dpt.length;
+  const infoDpt = new Array(N);
+  for (let i = 1; i < N; i++) {
+    const row = dpt[i];
+    infoDpt[i] = {
+      cpNorm: normaliserCP(row[4]),
+      cpBrut: row[4],
+      ville: String(row[5] || '').trim(),
+      villeNorm: normaliserNomCommune_(row[5]),
+      region: row[0] || carteReg[row[3]] || '',
+    };
+  }
+
   // --- Lecture des règles ---
   const derniere = saisie.getLastRow();
   if (derniere < 2) { ss.toast('Aucune règle à traiter.', 'Génération', 5); return; }
@@ -276,23 +292,21 @@ function genererAffectations() {
     let nbCommunes = 0;
 
     if (type === 'COMMUNES') {
-      // Liste de noms de communes
-      const noms = String(zone || '').split(/[,;\n\r]+/).map(normaliserNomCommune_).filter(Boolean);
+      // Liste de noms de communes (normalisée une fois)
       const cible = {};
-      noms.forEach(n => cible[n] = true);
-      for (let i = 1; i < dpt.length; i++) {
-        const nomNorm = normaliserNomCommune_(dpt[i][5]);
-        if (cible[nomNorm]) {
-          nbCommunes += ajouterCommune_(communes, dpt[i], carteReg, filiale, commercial);
+      String(zone || '').split(/[,;\n\r]+/).map(normaliserNomCommune_).filter(Boolean)
+        .forEach(n => cible[n] = true);
+      for (let i = 1; i < N; i++) {
+        if (cible[infoDpt[i].villeNorm]) {
+          nbCommunes += ajouterCommunePre_(communes, infoDpt[i], filiale, commercial);
         }
       }
     } else {
-      // Type CP : matching via testCPMatch
-      const expr = String(zone || '').trim();
-      for (let i = 1; i < dpt.length; i++) {
-        const cp = normaliserCP(dpt[i][4]);
-        if (cp && testCPMatch(cp, expr)) {
-          nbCommunes += ajouterCommune_(communes, dpt[i], carteReg, filiale, commercial);
+      // Type CP : expression compilée une fois, puis test rapide par commune
+      const matcheur = compilerCP_(zone);
+      for (let i = 1; i < N; i++) {
+        if (testCompile_(matcheur, infoDpt[i].cpNorm)) {
+          nbCommunes += ajouterCommunePre_(communes, infoDpt[i], filiale, commercial);
         }
       }
     }
@@ -401,24 +415,52 @@ function compterLignesManuelles_(sheet, nbCols, colOrigine) {
   }).length;
 }
 
-/** Ajoute un commercial à une commune (dédup commercial). Retourne 1 si nouvelle commune. */
-function ajouterCommune_(communes, dptRow, carteReg, filiale, commercial) {
-  const cpNorm = normaliserCP(dptRow[4]);     // 5 chiffres, pour le regroupement interne
-  const cpBrut = dptRow[4];                    // valeur d'origine (ex. 6000), pour l'affichage/la clé
-  const ville = String(dptRow[5] || '').trim();
-  const dep = dptRow[3];
-  const region = dptRow[0] || carteReg[dep] || '';
-  const cle = cpNorm + '|' + normaliserNomCommune_(ville);
-
+/** Ajoute un commercial à une commune (valeurs pré-calculées). Retourne 1 si nouvelle commune. */
+function ajouterCommunePre_(communes, inf, filiale, commercial) {
+  const cle = inf.cpNorm + '|' + inf.villeNorm;
   let nouvelle = 0;
   if (!communes[cle]) {
-    communes[cle] = { cp: cpBrut, cpNorm: cpNorm, ville: ville, region: region, commerciaux: [] };
+    communes[cle] = { cp: inf.cpBrut, cpNorm: inf.cpNorm, ville: inf.ville, region: inf.region, commerciaux: [] };
     nouvelle = 1;
   }
   // Dédup : un même commercial ne doit pas apparaître deux fois sur la commune
   const existe = communes[cle].commerciaux.some(x => x.nom === commercial && x.filiale === filiale);
   if (!existe) communes[cle].commerciaux.push({ nom: commercial, filiale: filiale });
   return nouvelle;
+}
+
+/** Compile une expression CP (vide/Tous/liste/tranches) en structure testable rapidement. */
+function compilerCP_(expr) {
+  const e = String(expr || '').trim();
+  if (e === '' || e.toLowerCase() === 'tous') return { tous: true, singles: {}, ranges: [] };
+  const singles = {}, ranges = [];
+  e.split(/[,;\n\r]+/).forEach(m => {
+    m = m.trim();
+    if (!m) return;
+    if (m.indexOf('-') !== -1) {
+      const p = m.split('-');
+      if (p.length === 2) {
+        const a = normaliserCP(p[0]), b = normaliserCP(p[1]);
+        if (a && b) ranges.push([parseInt(a, 10), parseInt(b, 10)]);
+      }
+    } else {
+      const c = normaliserCP(m);
+      if (c) singles[c] = true;
+    }
+  });
+  return { tous: false, singles: singles, ranges: ranges };
+}
+
+/** Teste un CP normalisé contre une expression compilée. */
+function testCompile_(m, cpNorm) {
+  if (!cpNorm) return false;
+  if (m.tous) return true;
+  if (m.singles[cpNorm]) return true;
+  const n = parseInt(cpNorm, 10);
+  for (let k = 0; k < m.ranges.length; k++) {
+    if (n >= m.ranges[k][0] && n <= m.ranges[k][1]) return true;
+  }
+  return false;
 }
 
 /**
@@ -476,5 +518,13 @@ function ecrireEnPreservantManuel_(sheet, lignesGenerees, nbCols, colOrigine, ti
       return row;
     })
   );
-  if (tout.length) sheet.getRange(2, 1, tout.length, colOrigine).setValues(tout);
+
+  // PERF : écriture par blocs pour ne pas dépasser le délai du service Sheets
+  // sur de très gros volumes (plusieurs milliers de lignes).
+  const BLOC = 5000;
+  for (let depart = 0; depart < tout.length; depart += BLOC) {
+    const lot = tout.slice(depart, depart + BLOC);
+    sheet.getRange(2 + depart, 1, lot.length, colOrigine).setValues(lot);
+    SpreadsheetApp.flush();
+  }
 }
