@@ -311,6 +311,9 @@ function genererAffectations() {
   // --- Construction des lignes AFFECTATIONS générées ---
   const conflitsMultiFiliale = [];
   const lignesAffect = [];
+  // Clés "filiale|cpNorm|villeNorm" couvertes par la génération → sert à supprimer
+  // les placeholders « A AFFECTER » de ces communes (ils sont désormais attribués).
+  const clesCouvertes = {};
   Object.keys(communes).forEach(cle => {
     const c = communes[cle];
     const nb = c.commerciaux.length;
@@ -322,11 +325,13 @@ function genererAffectations() {
     if (Object.keys(filiales).length > 1) conflitsMultiFiliale.push(c.ville + ' (' + c.cp + ')');
 
     c.commerciaux.forEach(x => {
+      const cleCommune = x.filiale + '-' + c.cp + '-' + c.ville;  // ex. EGS Energies-6000-NICE
+      clesCouvertes[String(x.filiale).trim().toUpperCase() + '|' + c.cpNorm + '|' + normaliserNomCommune_(c.ville)] = true;
       // A Région | B Filiale | C CP | D Ville | E Commercial | F Secteur | G Actif
       // H Commentaire | I Clé commune | J Rôle | K Priorité | L Rang | M Origine
       lignesAffect.push([
         c.region, x.filiale, c.cp, c.ville, x.nom, '', 'Oui',
-        '', '', role, prio, '', GEN.MARQUEUR
+        '', cleCommune, role, prio, '', GEN.MARQUEUR
       ]);
     });
   });
@@ -348,7 +353,8 @@ function genererAffectations() {
   apercu.push('');
   apercu.push('• Règles traitées : ' + rapport.regles + (rapport.lignesIgnorees ? ' (' + rapport.lignesIgnorees + ' ignorée(s), filiale/commercial vide)' : ''));
   apercu.push('• Communes couvertes : ' + Object.keys(communes).length);
-  apercu.push('• AFFECTATIONS : ' + lignesAffect.length + ' lignes générées remplacées' + (manuAffect ? ' (' + manuAffect + ' lignes manuelles conservées)' : ''));
+  apercu.push('• AFFECTATIONS : ' + lignesAffect.length + ' lignes générées remplacées' + (manuAffect ? ' (jusqu\'à ' + manuAffect + ' lignes manuelles conservées)' : ''));
+  apercu.push('  ↳ les « A AFFECTER » des communes désormais attribuées sont supprimés (anti-doublon)');
   apercu.push('• PRODUITS : ' + lignesProduits.length + ' lignes générées remplacées' + (manuProduits ? ' (' + manuProduits + ' lignes manuelles conservées)' : ''));
   apercu.push('');
   if (rapport.inconnus.length) apercu.push('⚠ Commerciaux INCONNUS du référentiel (faute de frappe ?) : ' + rapport.inconnus.slice(0, 15).join(', ') + (rapport.inconnus.length > 15 ? '…' : ''));
@@ -366,8 +372,15 @@ function genererAffectations() {
 
   // --- Écriture (en préservant les lignes manuelles) ---
   ss.toast('Écriture de ' + lignesAffect.length + ' affectations…', '⏳ Génération', -1);
-  ecrireEnPreservantManuel_(affectSheet, lignesAffect, GEN.AFFECT_COLS, GEN.AFFECT_ORIGINE, 'Origine');
-  ecrireEnPreservantManuel_(produitsSheet, lignesProduits, GEN.PRODUITS_COLS, GEN.PRODUITS_ORIGINE, 'Origine');
+  // Pour AFFECTATIONS : on remplace aussi les placeholders « A AFFECTER » des communes
+  // désormais couvertes par une attribution (sinon doublon placeholder + commercial réel).
+  const optPlaceholder = {
+    cles: clesCouvertes,
+    idxFiliale: 1, idxCP: 2, idxVille: 3, idxCommercial: 4,
+    placeholders: ['A AFFECTER', ''],
+  };
+  ecrireEnPreservantManuel_(affectSheet, lignesAffect, GEN.AFFECT_COLS, GEN.AFFECT_ORIGINE, 'Origine', optPlaceholder);
+  ecrireEnPreservantManuel_(produitsSheet, lignesProduits, GEN.PRODUITS_COLS, GEN.PRODUITS_ORIGINE, 'Origine', null);
 
   ss.toast('Terminé', '✓ Génération', 5);
   ui.alert('Génération terminée',
@@ -390,15 +403,16 @@ function compterLignesManuelles_(sheet, nbCols, colOrigine) {
 
 /** Ajoute un commercial à une commune (dédup commercial). Retourne 1 si nouvelle commune. */
 function ajouterCommune_(communes, dptRow, carteReg, filiale, commercial) {
-  const cp = normaliserCP(dptRow[4]);
+  const cpNorm = normaliserCP(dptRow[4]);     // 5 chiffres, pour le regroupement interne
+  const cpBrut = dptRow[4];                    // valeur d'origine (ex. 6000), pour l'affichage/la clé
   const ville = String(dptRow[5] || '').trim();
   const dep = dptRow[3];
   const region = dptRow[0] || carteReg[dep] || '';
-  const cle = cp + '|' + normaliserNomCommune_(ville);
+  const cle = cpNorm + '|' + normaliserNomCommune_(ville);
 
   let nouvelle = 0;
   if (!communes[cle]) {
-    communes[cle] = { cp: cp, ville: ville, region: region, commerciaux: [] };
+    communes[cle] = { cp: cpBrut, cpNorm: cpNorm, ville: ville, region: region, commerciaux: [] };
     nouvelle = 1;
   }
   // Dédup : un même commercial ne doit pas apparaître deux fois sur la commune
@@ -411,7 +425,7 @@ function ajouterCommune_(communes, dptRow, carteReg, filiale, commercial) {
  * Réécrit une feuille en gardant les lignes manuelles (colonne Origine ≠ "généré")
  * et en remplaçant les lignes générées par le nouveau lot.
  */
-function ecrireEnPreservantManuel_(sheet, lignesGenerees, nbCols, colOrigine, titreOrigine) {
+function ecrireEnPreservantManuel_(sheet, lignesGenerees, nbCols, colOrigine, titreOrigine, optPlaceholder) {
   // S'assure que l'en-tête de la colonne Origine existe (+ note d'avertissement)
   const enteteOrigine = sheet.getRange(1, colOrigine);
   if (!enteteOrigine.getValue()) {
@@ -426,11 +440,28 @@ function ecrireEnPreservantManuel_(sheet, lignesGenerees, nbCols, colOrigine, ti
   let manuelles = [];
   if (last >= 2) {
     const data = sheet.getRange(2, 1, last - 1, colOrigine).getValues();
+    const placeholdersSet = {};
+    if (optPlaceholder) optPlaceholder.placeholders.forEach(p => placeholdersSet[String(p).trim().toUpperCase()] = true);
+
     manuelles = data.filter(row => {
       // ligne non vide ET non générée
       const origine = row[colOrigine - 1];
       const vide = row.slice(0, nbCols).every(v => v === '' || v === null);
-      return !vide && origine !== GEN.MARQUEUR;
+      if (vide || origine === GEN.MARQUEUR) return false;
+
+      // Remplacement des placeholders : si cette ligne manuelle est un « A AFFECTER »
+      // (ou commercial vide) sur une commune désormais couverte par la génération,
+      // on la retire pour éviter le doublon placeholder + commercial réel.
+      if (optPlaceholder) {
+        const commercial = String(row[optPlaceholder.idxCommercial] || '').trim().toUpperCase();
+        if (placeholdersSet[commercial]) {
+          const filiale = String(row[optPlaceholder.idxFiliale] || '').trim().toUpperCase();
+          const cpNorm = normaliserCP(row[optPlaceholder.idxCP]);
+          const villeNorm = normaliserNomCommune_(row[optPlaceholder.idxVille]);
+          if (optPlaceholder.cles[filiale + '|' + cpNorm + '|' + villeNorm]) return false; // couverte → on supprime
+        }
+      }
+      return true;
     });
   }
 
