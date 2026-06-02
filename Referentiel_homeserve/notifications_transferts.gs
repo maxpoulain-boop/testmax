@@ -46,10 +46,18 @@ const COL_PRODUIT    = 8;
 const COL_CP         = 9;
 const COL_VILLE      = 10;
 const COL_COMMENTAIRE= 11;
+const COL_REGION     = 12; // L = Région concernée (liste déroulante) → responsable régional notifié
+
+// Nombre de colonnes lues sur une ligne TRANSFERTS (jusqu'à la Région incluse)
+const NB_COLS_TRANSFERTS = 12;
 
 const CELL_MODE           = 'C6';
 const CELL_EMAIL_TEST     = 'C9';
-// Destinataires PROD : C12 jusqu'à C50 (plage lue dynamiquement, cellules vides ignorées)
+// Destinataires PROD fixes : colonne C à partir de C12 (lus jusqu'à la dernière ligne non-vide).
+// Table régionale (Région → email du responsable) : colonnes E et F à partir de la ligne 12.
+const REGION_MAP_LIGNE_DEBUT = 12;
+const REGION_MAP_COL_REGION  = 5; // E
+const REGION_MAP_COL_EMAIL   = 6; // F
 
 // Préfixes pour PropertiesService — clés basées sur le contenu, pas le n° de ligne
 const PROP_SENT     = 'sent_v_';
@@ -179,7 +187,7 @@ function verifierRappelsQuotidiens() {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
 
-  const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  const data = sheet.getRange(2, 1, lastRow - 1, NB_COLS_TRANSFERTS).getValues();
   const aujourdHui = nouvelleDate(new Date());
   const props = PropertiesService.getDocumentProperties();
 
@@ -222,7 +230,7 @@ function purgerProprietesObsoletes() {
   const clesValides = {};
   const lastRow = sheet.getLastRow();
   if (lastRow >= 2) {
-    const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+    const data = sheet.getRange(2, 1, lastRow - 1, NB_COLS_TRANSFERTS).getValues();
     data.forEach(row => {
       const infos = lireRangee(row);
       if (infos.filiale) clesValides[cleTransfert(infos)] = true;
@@ -277,7 +285,7 @@ function envoyerEmailValidation(row) {
   const infos = lireLigne(row);
   if (!infos.filiale) return;
 
-  const destinataires = obtenirDestinataires();
+  const destinataires = obtenirDestinataires(infos.region);
   if (!destinataires.length) {
     Logger.log('Aucun destinataire configuré — vérifiez l\'onglet CONTACTS');
     return;
@@ -303,7 +311,7 @@ function envoyerEmailValidation(row) {
 }
 
 function envoyerEmailRappelAvecInfos(infos) {
-  const destinataires = obtenirDestinataires();
+  const destinataires = obtenirDestinataires(infos.region);
   if (!destinataires.length) return;
 
   const sujet = '[Rappel J-3] Transfert ' + infos.filiale + ' commence le ' + formaterDate(infos.dateDebut);
@@ -320,7 +328,7 @@ function envoyerEmailAnnulation(row) {
   const infos = lireLigne(row);
   if (!infos.filiale) return;
 
-  const destinataires = obtenirDestinataires();
+  const destinataires = obtenirDestinataires(infos.region);
   if (!destinataires.length) return;
 
   const sujet = '[Transfert annulé] ' + infos.filiale + ' — ' + infos.remplace + ' → ' + infos.nouveau;
@@ -344,7 +352,7 @@ function envoyerEmailAnnulation(row) {
 
 function lireLigne(row) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_TRANSFERTS);
-  const data = sheet.getRange(row, 1, 1, 11).getValues()[0];
+  const data = sheet.getRange(row, 1, 1, NB_COLS_TRANSFERTS).getValues()[0];
   return lireRangee(data);
 }
 
@@ -361,10 +369,17 @@ function lireRangee(data) {
     cp         : data[COL_CP - 1]          || '',
     ville      : data[COL_VILLE - 1]       || '',
     commentaire: data[COL_COMMENTAIRE - 1] || '',
+    region     : data[COL_REGION - 1]      || '',
   };
 }
 
-function obtenirDestinataires() {
+/**
+ * Renvoie les destinataires d'une notification.
+ * @param {string} [region] Région concernée par le transfert. Si fournie et en mode
+ *   PROD, l'email du responsable régional correspondant (table CONTACTS E/F) est
+ *   ajouté à la liste fixe. Les doublons sont éliminés.
+ */
+function obtenirDestinataires(region) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_CONTACTS);
   if (!sheet) return [];
 
@@ -373,17 +388,47 @@ function obtenirDestinataires() {
     return validerEmails([sheet.getRange(CELL_EMAIL_TEST).getValue()]);
   }
   if (mode === 'PROD') {
-    // Lit la colonne C à partir de la ligne 12 jusqu'à la dernière ligne non-vide.
-    // Aucune limite : ajouter un destinataire = ajouter une ligne, sans toucher au code.
-    // Les cellules vides intercalées sont simplement ignorées.
-    const PREMIERE_LIGNE = 12;
-    const derniere = sheet.getLastRow();
-    if (derniere < PREMIERE_LIGNE) return [];
-    const plage = sheet.getRange(PREMIERE_LIGNE, 3, derniere - PREMIERE_LIGNE + 1, 1).getValues();
-    const emails = plage.map(r => r[0]).filter(v => v);
-    return validerEmails(emails);
+    const fixes = lireDestinatairesFixes_(sheet);
+    const regional = emailRegional_(sheet, region);
+    return dedupliquerEmails_(fixes.concat(regional));
   }
   return [];
+}
+
+/** Liste fixe : colonne C de CONTACTS, de C12 jusqu'à la dernière ligne non-vide. */
+function lireDestinatairesFixes_(sheet) {
+  const derniere = sheet.getLastRow();
+  if (derniere < REGION_MAP_LIGNE_DEBUT) return [];
+  const plage = sheet.getRange(REGION_MAP_LIGNE_DEBUT, 3, derniere - REGION_MAP_LIGNE_DEBUT + 1, 1).getValues();
+  return validerEmails(plage.map(r => r[0]).filter(v => v));
+}
+
+/** Email du responsable régional pour une région donnée (table CONTACTS E:F dès la ligne 12). */
+function emailRegional_(sheet, region) {
+  if (!region) return [];
+  const cible = region.toString().trim().toUpperCase();
+  const derniere = sheet.getLastRow();
+  if (derniere < REGION_MAP_LIGNE_DEBUT) return [];
+  const data = sheet.getRange(
+    REGION_MAP_LIGNE_DEBUT, REGION_MAP_COL_REGION,
+    derniere - REGION_MAP_LIGNE_DEBUT + 1, 2
+  ).getValues();
+  for (let i = 0; i < data.length; i++) {
+    const reg = (data[i][0] || '').toString().trim().toUpperCase();
+    if (reg && reg === cible) return validerEmails([data[i][1]]);
+  }
+  return [];
+}
+
+/** Supprime les doublons d'emails (insensible à la casse), en gardant l'ordre. */
+function dedupliquerEmails_(liste) {
+  const vus = {};
+  const out = [];
+  liste.forEach(e => {
+    const k = e.toLowerCase();
+    if (!vus[k]) { vus[k] = true; out.push(e); }
+  });
+  return out;
 }
 
 function validerEmails(liste) {
@@ -514,14 +559,36 @@ function testEnvoiEmail() {
 }
 
 function afficherDestinataires() {
-  const destinataires = obtenirDestinataires();
-  const mode = SpreadsheetApp.getActive().getSheetByName(SHEET_CONTACTS).getRange(CELL_MODE).getValue();
-  SpreadsheetApp.getUi().alert(
-    'Configuration actuelle',
-    'Mode : ' + mode + '\n\nDestinataires :\n' +
-    (destinataires.length ? destinataires.join('\n') : '(aucun — vérifiez l\'onglet CONTACTS)'),
-    SpreadsheetApp.getUi().ButtonSet.OK
-  );
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_CONTACTS);
+  const mode = (sheet.getRange(CELL_MODE).getValue() || '').toString().toUpperCase();
+
+  let message = 'Mode : ' + mode + '\n\n';
+
+  if (mode === 'TEST') {
+    const test = validerEmails([sheet.getRange(CELL_EMAIL_TEST).getValue()]);
+    message += 'Email de test (C9) :\n' + (test.length ? test.join('\n') : '(aucun)');
+  } else if (mode === 'PROD') {
+    const fixes = lireDestinatairesFixes_(sheet);
+    message += 'Destinataires FIXES (toujours notifiés) :\n' +
+      (fixes.length ? fixes.join('\n') : '(aucun — colonne C dès C12)') + '\n\n';
+
+    // Table régionale E:F
+    const derniere = sheet.getLastRow();
+    const lignes = [];
+    if (derniere >= REGION_MAP_LIGNE_DEBUT) {
+      const data = sheet.getRange(REGION_MAP_LIGNE_DEBUT, REGION_MAP_COL_REGION,
+        derniere - REGION_MAP_LIGNE_DEBUT + 1, 2).getValues();
+      data.forEach(r => {
+        if (r[0] && r[1]) lignes.push('  • ' + r[0] + ' → ' + r[1]);
+      });
+    }
+    message += 'Responsable régional ajouté selon la Région du transfert :\n' +
+      (lignes.length ? lignes.join('\n') : '(table E/F vide)');
+  } else {
+    message += '(mode inconnu — mettez TEST ou PROD en C6)';
+  }
+
+  SpreadsheetApp.getUi().alert('Configuration actuelle', message, SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 function reinitialiserHistorique() {
