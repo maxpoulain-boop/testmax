@@ -31,9 +31,9 @@ const PARAM = {
   produits:  { nom: 'PARAM_PRODUITS',   col: 3,  ligne: 2 },
   actif:     { nom: 'PARAM_ACTIF',      col: 4,  ligne: 2 },
   motifs:    { nom: 'PARAM_MOTIFS',     col: 5,  ligne: 2 },
-  priorites: { nom: 'PARAM_PRIORITES',  col: 8,  ligne: 2 },
-  roles:     { nom: 'PARAM_ROLES',      col: 9,  ligne: 2 },
-  produitsT: { nom: 'PARAM_PRODUITS_T', col: 10, ligne: 2 },
+  priorites: { nom: 'PARAM_PRIORITES',  col: 6,  ligne: 2 },
+  roles:     { nom: 'PARAM_ROLES',      col: 7,  ligne: 2 },
+  produitsT: { nom: 'PARAM_PRODUITS_T', col: 8,  ligne: 2 },
 };
 
 /**
