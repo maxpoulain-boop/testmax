@@ -760,22 +760,48 @@ function protegerColonnesCalculees() {
       desc: 'Clé exception calculée — ne pas modifier manuellement' },
   ];
 
+  // Feuilles dont la ligne d'en-tête (ligne 1) doit être figée
+  const FEUILLES_ENTETE = [
+    'AFFECTATIONS_COMMUNES', 'PRODUITS_COMMERCIAUX', 'TRANSFERTS',
+    'EXCEPTIONS_PRODUITS', 'SAISIE_SECTEURS',
+  ];
+
+  // Petit utilitaire : crée une protection de plage réservée à l'admin
+  const verrouiller = (plage, desc) => {
+    const prot = plage.protect().setDescription(desc);
+    prot.addEditor(moi);
+    prot.removeEditors(prot.getEditors().filter(e => e.getEmail() !== moi.getEmail()));
+    if (prot.canDomainEdit()) prot.setDomainEdit(false);
+    count++;
+  };
+
+  // Nettoyage préalable : on supprime les protections de plage existantes sur
+  // TOUTES les feuilles concernées (union), une seule fois, avant de recréer —
+  // sinon on effacerait les protections qu'on vient de poser.
+  const feuillesConcernees = {};
+  COLS_CALCULEES.forEach(def => feuillesConcernees[def.feuille] = true);
+  FEUILLES_ENTETE.forEach(nom => feuillesConcernees[nom] = true);
+  Object.keys(feuillesConcernees).forEach(nom => {
+    const sh = ss.getSheetByName(nom);
+    if (sh) sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(p => p.remove());
+  });
+
+  // 1) Colonnes calculées (lignes 2..fin ; la ligne 1 est traitée plus bas)
   COLS_CALCULEES.forEach(def => {
     const sh = ss.getSheetByName(def.feuille);
     if (!sh) return;
     const lastRow = Math.max(sh.getMaxRows(), 2);
-    // Supprimer les protections de plage existantes sur ces colonnes
-    sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(p => p.remove());
-
     def.cols.forEach(col => {
-      // Ligne 1 = en-tête, lignes 2..lastRow = données
-      const plage = sh.getRange(col + '1:' + col + lastRow);
-      const prot = plage.protect().setDescription(def.desc);
-      prot.addEditor(moi);
-      prot.removeEditors(prot.getEditors().filter(e => e.getEmail() !== moi.getEmail()));
-      if (prot.canDomainEdit()) prot.setDomainEdit(false);
-      count++;
+      verrouiller(sh.getRange(col + '2:' + col + lastRow), def.desc);
     });
+  });
+
+  // 2) En-têtes (ligne 1) des feuilles de saisie : intitulés figés
+  FEUILLES_ENTETE.forEach(nom => {
+    const sh = ss.getSheetByName(nom);
+    if (!sh) return;
+    const lastCol = Math.max(sh.getLastColumn(), 1);
+    verrouiller(sh.getRange(1, 1, 1, lastCol), 'Intitulés de colonnes — ne pas modifier');
   });
 
   // --- RECHERCHE : tout verrouiller sauf les 4 champs de saisie ---
@@ -801,11 +827,16 @@ function protegerColonnesCalculees() {
   SpreadsheetApp.getUi().alert(
     'Protection appliquée',
     count + ' plage(s) verrouillée(s).\n\n' +
-    '• AFFECTATIONS_COMMUNES : colonnes I (Clé), L (Rang), M (Origine)\n' +
-    '• PRODUITS_COMMERCIAUX  : colonnes F (Rang), G (Origine)\n' +
-    '• TRANSFERTS             : colonne M (Clé transfert)\n' +
-    '• EXCEPTIONS_PRODUITS   : colonne H (Clé exception)\n' +
-    '• RECHERCHE              : tout sauf C6 (Filiale), C7 (CP), C8 (Ville), C9 (Produit)\n\n' +
+    'Colonnes calculées :\n' +
+    '• AFFECTATIONS_COMMUNES : I (Clé), L (Rang), M (Origine)\n' +
+    '• PRODUITS_COMMERCIAUX  : F (Rang), G (Origine)\n' +
+    '• TRANSFERTS             : M (Clé transfert)\n' +
+    '• EXCEPTIONS_PRODUITS   : H (Clé exception)\n\n' +
+    'Intitulés de colonnes (ligne 1) figés sur :\n' +
+    '  AFFECTATIONS_COMMUNES, PRODUITS_COMMERCIAUX, TRANSFERTS,\n' +
+    '  EXCEPTIONS_PRODUITS, SAISIE_SECTEURS\n\n' +
+    'RECHERCHE : tout figé (titres + libellés + formules)\n' +
+    '  sauf C6 (Filiale), C7 (CP), C8 (Ville), C9 (Produit).\n\n' +
     'Vous seul pouvez modifier ces zones. Les autres utilisateurs voient un avertissement.',
     SpreadsheetApp.getUi().ButtonSet.OK
   );
