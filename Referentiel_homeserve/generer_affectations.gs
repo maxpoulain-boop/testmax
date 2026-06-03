@@ -354,31 +354,46 @@ function genererAffectations() {
   const clesCouvertes = {};
   Object.keys(communes).forEach(cle => {
     const c = communes[cle];
-    const nb = c.commerciaux.length;
-    const role = nb >= 2 ? 'Co-affecté' : 'Principal';
-    const prio = nb >= 2 ? 2 : 1;
-    // Détection commune partagée entre filiales différentes
-    const filiales = {};
-    c.commerciaux.forEach(x => filiales[x.filiale] = true);
-    if (Object.keys(filiales).length > 1) conflitsMultiFiliale.push(c.ville + ' (' + c.cp + ')');
 
-    c.commerciaux.forEach((x, idx) => {
-      const cleCommune = x.filiale + '-' + c.cp + '-' + c.ville;  // ex. EGS Energies-6000-NICE
-      clesCouvertes[String(x.filiale).trim().toUpperCase() + '|' + c.cpNorm + '|' + normaliserNomCommune_(c.ville)] = true;
-      // A Région | B Filiale | C CP | D Ville | E Commercial | F Secteur | G Actif
-      // H Commentaire | I Clé commune | J Rôle | K Priorité | L Rang | M Origine
-      lignesAffect.push([
-        c.region, x.filiale, c.cp, c.ville, x.nom, '', 'Oui',
-        '', cleCommune, role, prio, idx + 1, GEN.MARQUEUR
-      ]);
+    // La clé commune (col I) lue par RECHERCHE inclut la FILIALE. Rôle, priorité
+    // et rang doivent donc être calculés par filiale au sein de la commune, sinon
+    // une commune partagée entre 2 filiales donnerait des rangs 1 et 2 sur des clés
+    // différentes → 1ère ligne vide dans RECHERCHE et rôle « Co-affecté » erroné.
+    const parFiliale = {};
+    c.commerciaux.forEach(x => {
+      (parFiliale[x.filiale] = parFiliale[x.filiale] || []).push(x);
+    });
+    if (Object.keys(parFiliale).length > 1) conflitsMultiFiliale.push(c.ville + ' (' + c.cp + ')');
+
+    Object.keys(parFiliale).forEach(filiale => {
+      const liste = parFiliale[filiale];
+      const nb = liste.length;
+      const role = nb >= 2 ? 'Co-affecté' : 'Principal';
+      const prio = nb >= 2 ? 2 : 1;
+      const cleCommune = filiale + '-' + c.cp + '-' + c.ville;  // ex. EGS Energies-6000-NICE
+      clesCouvertes[String(filiale).trim().toUpperCase() + '|' + c.cpNorm + '|' + normaliserNomCommune_(c.ville)] = true;
+      liste.forEach((x, idx) => {
+        // A Région | B Filiale | C CP | D Ville | E Commercial | F Secteur | G Actif
+        // H Commentaire | I Clé commune | J Rôle | K Priorité | L Rang | M Origine
+        lignesAffect.push([
+          c.region, filiale, c.cp, c.ville, x.nom, '', 'Oui',
+          '', cleCommune, role, prio, idx + 1, GEN.MARQUEUR
+        ]);
+      });
     });
   });
 
   // --- Construction des lignes PRODUITS générées ---
+  // Le Rang produit (col F) est lu par RECHERCHE (colonnes M..W « Tous les produits
+  // gérés ») via F=1, F=2… Il doit s'incrémenter par couple (filiale, commercial),
+  // sinon ces colonnes restent vides.
+  const rangParCommercial = {};
   const lignesProduits = Object.keys(produitsSet).map(cle => {
     const [filiale, commercial, produit] = cle.split('|');
+    const cleC = filiale + '|' + commercial;
+    rangParCommercial[cleC] = (rangParCommercial[cleC] || 0) + 1;
     // A Filiale | B Commercial | C Produit | D Actif | E Commentaire | F Rang | G Origine
-    return [filiale, commercial, produit, 'Oui', '', '', GEN.MARQUEUR];
+    return [filiale, commercial, produit, 'Oui', '', rangParCommercial[cleC], GEN.MARQUEUR];
   });
 
   // --- Comptage des lignes manuelles qui seront préservées (pour l'aperçu) ---
