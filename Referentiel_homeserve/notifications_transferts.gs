@@ -760,10 +760,11 @@ function protegerColonnesCalculees() {
       desc: 'Clé exception calculée — ne pas modifier manuellement' },
   ];
 
-  // Feuilles dont la ligne d'en-tête (ligne 1) doit être figée
+  // Feuilles dont la ligne d'en-tête (ligne 1) doit être figée.
+  // SAISIE_SECTEURS reste volontairement 100 % libre (en-tête + données).
   const FEUILLES_ENTETE = [
     'AFFECTATIONS_COMMUNES', 'PRODUITS_COMMERCIAUX', 'TRANSFERTS',
-    'EXCEPTIONS_PRODUITS', 'SAISIE_SECTEURS',
+    'EXCEPTIONS_PRODUITS',
   ];
 
   // Petit utilitaire : crée une protection de plage réservée à l'admin
@@ -834,7 +835,8 @@ function protegerColonnesCalculees() {
     '• EXCEPTIONS_PRODUITS   : H (Clé exception)\n\n' +
     'Intitulés de colonnes (ligne 1) figés sur :\n' +
     '  AFFECTATIONS_COMMUNES, PRODUITS_COMMERCIAUX, TRANSFERTS,\n' +
-    '  EXCEPTIONS_PRODUITS, SAISIE_SECTEURS\n\n' +
+    '  EXCEPTIONS_PRODUITS\n' +
+    '  (SAISIE_SECTEURS reste entièrement libre)\n\n' +
     'RECHERCHE : tout figé (titres + libellés + formules)\n' +
     '  sauf C6 (Filiale), C7 (CP), C8 (Ville), C9 (Produit).\n\n' +
     'Vous seul pouvez modifier ces zones. Les autres utilisateurs voient un avertissement.',
