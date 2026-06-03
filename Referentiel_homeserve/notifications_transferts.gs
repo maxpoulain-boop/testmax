@@ -87,6 +87,7 @@ function onOpen() {
     .addItem('🧹 Purger les flags emails orphelins', 'purgerProprietesObsoletesUI')
     .addItem('🔄 Réinitialiser l\'historique emails', 'reinitialiserHistorique')
     .addItem('🔒 Protéger les feuilles de référence', 'protegerFeuillesReference')
+    .addItem('🔐 Verrouiller les colonnes calculées', 'protegerColonnesCalculees')
     .addToUi();
 }
 
@@ -726,7 +727,91 @@ function protegerFeuillesReference() {
 }
 
 // ============================================================
-// TESTS UNITAIRES CP_MATCH
+// PROTECTION DES COLONNES CALCULÉES (anti-coquille)
+// ============================================================
+
+/**
+ * Verrouille les colonnes calculées automatiquement (clés, rangs, origines)
+ * dans les feuilles de saisie, et les champs résultat de RECHERCHE.
+ * Les utilisateurs gardent l'accès à toutes les colonnes de saisie.
+ *
+ * Appel idempotent : supprime les protections de plage existantes avant
+ * de les recréer.
+ */
+function protegerColonnesCalculees() {
+  const ss = SpreadsheetApp.getActive();
+  const moi = Session.getEffectiveUser();
+  let count = 0;
+
+  // --- Colonnes calculées dans les feuilles de saisie ---
+  // description → [nomFeuille, colonnes à verrouiller (lettres)]
+  const COLS_CALCULEES = [
+    // I = Clé commune (=filiale-cp-ville), L = Rang, M = Origine
+    { feuille: 'AFFECTATIONS_COMMUNES', cols: ['I', 'L', 'M'],
+      desc: 'Colonnes calculées — ne pas modifier manuellement' },
+    // F = Rang produit, G = Origine
+    { feuille: 'PRODUITS_COMMERCIAUX',  cols: ['F', 'G'],
+      desc: 'Colonnes calculées — ne pas modifier manuellement' },
+    // M = Clé transfert (formule)
+    { feuille: 'TRANSFERTS',            cols: ['M'],
+      desc: 'Clé transfert calculée — ne pas modifier manuellement' },
+    // H = Clé exception (formule)
+    { feuille: 'EXCEPTIONS_PRODUITS',   cols: ['H'],
+      desc: 'Clé exception calculée — ne pas modifier manuellement' },
+  ];
+
+  COLS_CALCULEES.forEach(def => {
+    const sh = ss.getSheetByName(def.feuille);
+    if (!sh) return;
+    const lastRow = Math.max(sh.getMaxRows(), 2);
+    // Supprimer les protections de plage existantes sur ces colonnes
+    sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(p => p.remove());
+
+    def.cols.forEach(col => {
+      // Ligne 1 = en-tête, lignes 2..lastRow = données
+      const plage = sh.getRange(col + '1:' + col + lastRow);
+      const prot = plage.protect().setDescription(def.desc);
+      prot.addEditor(moi);
+      prot.removeEditors(prot.getEditors().filter(e => e.getEmail() !== moi.getEmail()));
+      if (prot.canDomainEdit()) prot.setDomainEdit(false);
+      count++;
+    });
+  });
+
+  // --- RECHERCHE : tout verrouiller sauf les 4 champs de saisie ---
+  // C6 = Filiale, C7 = CP, C8 = Ville, C9 = Produit (filtre optionnel)
+  const rech = ss.getSheetByName('RECHERCHE');
+  if (rech) {
+    rech.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(p => p.remove());
+    rech.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(p => p.remove());
+    const prot = rech.protect().setDescription('Outil de recherche — modifier uniquement les cellules de saisie (C6 à C9)');
+    prot.addEditor(moi);
+    prot.removeEditors(prot.getEditors().filter(e => e.getEmail() !== moi.getEmail()));
+    if (prot.canDomainEdit()) prot.setDomainEdit(false);
+    // Exclure C6:C9 de la protection (les utilisateurs peuvent les modifier)
+    prot.setUnprotectedRanges([rech.getRange('C6:C9')]);
+    count++;
+  }
+
+  SpreadsheetApp.getActive().toast(
+    count + ' plage(s) protégée(s) contre les modifications accidentelles.',
+    '🔒 Protection colonnes calculées',
+    7
+  );
+  SpreadsheetApp.getUi().alert(
+    'Protection appliquée',
+    count + ' plage(s) verrouillée(s).\n\n' +
+    '• AFFECTATIONS_COMMUNES : colonnes I (Clé), L (Rang), M (Origine)\n' +
+    '• PRODUITS_COMMERCIAUX  : colonnes F (Rang), G (Origine)\n' +
+    '• TRANSFERTS             : colonne M (Clé transfert)\n' +
+    '• EXCEPTIONS_PRODUITS   : colonne H (Clé exception)\n' +
+    '• RECHERCHE              : tout sauf C6 (Filiale), C7 (CP), C8 (Ville), C9 (Produit)\n\n' +
+    'Vous seul pouvez modifier ces zones. Les autres utilisateurs voient un avertissement.',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
+}
+
+
 // ============================================================
 
 function testCPMatchUnit() {
