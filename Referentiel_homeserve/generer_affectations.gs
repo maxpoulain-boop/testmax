@@ -431,6 +431,10 @@ function genererAffectations() {
     return;
   }
 
+  // Recale les plages figées de RECHERCHE sur la nouvelle taille des données
+  // (sinon les commerciaux/produits au-delà de l'ancienne borne restent invisibles).
+  try { corrigerPlagesRecherche_(); } catch (e) { /* non bloquant */ }
+
   ss.toast('Terminé', '✓ Génération', 5);
   ui.alert('Génération terminée',
     lignesAffect.length + ' affectations et ' + lignesProduits.length + ' produits écrits.\n\n' +
@@ -566,6 +570,66 @@ function ecrireEnPreservantManuel_(sheet, lignesGenerees, nbCols, colOrigine, ti
 }
 
 /** setValues protégé par réessais (back-off) contre les erreurs transitoires de Sheets. */
+/**
+ * Recale les plages figées des formules de l'onglet RECHERCHE sur la
+ * taille réelle des données. Les formules y référencent des plages en dur
+ * (ex. AFFECTATIONS_COMMUNES!$E$2:$E$9312, PRODUITS_COMMERCIAUX!$A$2:$A$238)
+ * qui deviennent trop courtes après chaque génération : les commerciaux ou
+ * produits situés au-delà de la borne deviennent invisibles dans RECHERCHE
+ * ("Gère ce produit ?" renvoie ✗ Non, "Tous les produits gérés" reste vide).
+ */
+function corrigerPlagesRecherche() {
+  const res = corrigerPlagesRecherche_();
+  if (!res) { SpreadsheetApp.getUi().alert('Onglet RECHERCHE introuvable.'); return; }
+  const detail = Object.keys(res.cibles).map(n => '• ' + n + ' → ligne ' + res.cibles[n]).join('\n');
+  SpreadsheetApp.getUi().alert(
+    'Plages RECHERCHE recalées',
+    res.nbCellules + ' formule(s) mise(s) à jour.\n\nNouvelles bornes :\n' + detail,
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
+}
+
+/** Logique sans UI. Retourne {nbCellules, cibles} ou null si RECHERCHE absent. */
+function corrigerPlagesRecherche_() {
+  const ss = SpreadsheetApp.getActive();
+  const rech = ss.getSheetByName('RECHERCHE');
+  if (!rech) return null;
+
+  // Feuilles référencées par les formules → borne haute = dernière ligne + marge
+  const MARGE = 1000;
+  const cibles = {};
+  ['AFFECTATIONS_COMMUNES', 'PRODUITS_COMMERCIAUX', 'TRANSFERTS', 'EXCEPTIONS_PRODUITS'].forEach(nom => {
+    const sh = ss.getSheetByName(nom);
+    if (sh) cibles[nom] = Math.max(sh.getLastRow() + MARGE, 2);
+  });
+
+  const plage = rech.getDataRange();
+  const formules = plage.getFormulas();
+  let nbCellules = 0;
+
+  for (let r = 0; r < formules.length; r++) {
+    for (let c = 0; c < formules[r].length; c++) {
+      const f = formules[r][c];
+      if (!f || f.charAt(0) !== '=') continue;
+      let modifiee = f, touche = false;
+      Object.keys(cibles).forEach(nom => {
+        const cible = cibles[nom];
+        // Capture SHEET!$COL$2:$COL$<fin> et remplace <fin> par la cible
+        const re = new RegExp('(' + nom + '!\\$?[A-Z]+\\$?2:\\$?[A-Z]+\\$?)(\\d+)', 'g');
+        modifiee = modifiee.replace(re, (m, prefixe, fin) => {
+          if (parseInt(fin, 10) !== cible) touche = true;
+          return prefixe + cible;
+        });
+      });
+      if (touche && modifiee !== f) {
+        plage.getCell(r + 1, c + 1).setFormula(modifiee);
+        nbCellules++;
+      }
+    }
+  }
+  return { nbCellules: nbCellules, cibles: cibles };
+}
+
 function setValuesAvecRetry_(range, values) {
   let essais = 0;
   while (true) {
