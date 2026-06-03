@@ -78,8 +78,12 @@ function installerPlagesNommees() {
 
   // Supprimer les plages nommées qu'on gère, pour repartir propre
   const nomsGeres = Object.keys(PARAM).map(c => PARAM[c].nom);
+  // Noms orphelins hérités d'anciennes versions ou d'imports Excel (#REF!) — à purger aussi
+  const nomsObsoletes = ['lst_statuts', 'lst_types', 'lst_filiales', 'lst_regions',
+    'lst_produits', 'lst_produits_transferts', 'lst_actif', 'lst_motifs',
+    'lst_roles', 'lst_priorites'];
   ss.getNamedRanges().forEach(nr => {
-    if (nomsGeres.indexOf(nr.getName()) !== -1) nr.remove();
+    if (nomsGeres.indexOf(nr.getName()) !== -1 || nomsObsoletes.indexOf(nr.getName()) !== -1) nr.remove();
   });
 
   let count = 0;
