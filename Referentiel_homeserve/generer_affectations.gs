@@ -43,6 +43,31 @@ const GEN = {
   PRODUITS_ORIGINE: 7,
 };
 
+// Région officielle de chaque filiale. La région d'une ligne AFFECTATIONS est
+// déterminée par la FILIALE (et non par le département de la commune), car une
+// filiale peut couvrir des communes de départements rattachés à une autre région
+// dans DPT_SOURCE. Si une filiale n'est pas listée ici, on retombe sur la région
+// déduite de DPT_SOURCE.
+const FILIALE_REGION = {
+  'Aujard':            'NORD-IDF',
+  'Cerise Energies':   'Grand OUEST',
+  'Chauffage du Nord': 'NORD-IDF',
+  'DEC Energies':      'Grand OUEST',
+  'EGS Energies':      'AURA - Sud Est',
+  'GD Energies':       'AURA - Sud Est',
+  'GEODIS':            'Grand OUEST',
+  'JCM Confort':       'Grand OUEST',
+  'Lepretre Energies': 'NORD-IDF',
+  'Mure Energies':     'AURA - Sud Est',
+  'Prigent Abiven':    'Grand OUEST',
+  'Roussin Energies':  'AURA - Sud Est',
+  'SBF Energies':      'AURA - Sud Est',
+  'SMT Energies':      'AURA - Sud Est',
+  'VIK Energies':      'NORMANDIE',
+  'VB Gaz':            'NORD-IDF',
+  'SMEC':              'NORD-IDF',
+};
+
 // ============================================================
 // 0. CHARTE GRAPHIQUE HOMESERVE
 // ============================================================
@@ -467,11 +492,14 @@ function genererAffectations() {
       const prio = nb >= 2 ? 2 : 1;
       const cleCommune = filiale + '-' + c.cp + '-' + c.ville;  // ex. EGS Energies-6000-NICE
       clesCouvertes[String(filiale).trim().toUpperCase() + '|' + c.cpNorm + '|' + normaliserNomCommune_(c.ville)] = true;
+      // Région = celle de la FILIALE (référentiel fixe), avec repli sur la région
+      // de la commune issue de DPT_SOURCE si la filiale n'est pas répertoriée.
+      const region = FILIALE_REGION[String(filiale).trim()] || c.region;
       liste.forEach((x, idx) => {
         // A Région | B Filiale | C CP | D Ville | E Commercial | F Secteur | G Actif
         // H Commentaire | I Clé commune | J Rôle | K Priorité | L Rang | M Origine
         lignesAffect.push([
-          c.region, filiale, c.cp, c.ville, x.nom, '', 'Oui',
+          region, filiale, c.cp, c.ville, x.nom, '', 'Oui',
           '', cleCommune, role, prio, idx + 1, GEN.MARQUEUR
         ]);
       });
