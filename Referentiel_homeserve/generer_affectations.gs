@@ -362,14 +362,14 @@ function genererAffectations() {
     c.commerciaux.forEach(x => filiales[x.filiale] = true);
     if (Object.keys(filiales).length > 1) conflitsMultiFiliale.push(c.ville + ' (' + c.cp + ')');
 
-    c.commerciaux.forEach(x => {
+    c.commerciaux.forEach((x, idx) => {
       const cleCommune = x.filiale + '-' + c.cp + '-' + c.ville;  // ex. EGS Energies-6000-NICE
       clesCouvertes[String(x.filiale).trim().toUpperCase() + '|' + c.cpNorm + '|' + normaliserNomCommune_(c.ville)] = true;
       // A Région | B Filiale | C CP | D Ville | E Commercial | F Secteur | G Actif
       // H Commentaire | I Clé commune | J Rôle | K Priorité | L Rang | M Origine
       lignesAffect.push([
         c.region, x.filiale, c.cp, c.ville, x.nom, '', 'Oui',
-        '', cleCommune, role, prio, '', GEN.MARQUEUR
+        '', cleCommune, role, prio, idx + 1, GEN.MARQUEUR
       ]);
     });
   });
