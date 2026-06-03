@@ -78,6 +78,7 @@ function onOpen() {
     .addItem('🗂️ Créer la feuille de saisie (secteurs)', 'creerFeuilleSaisie')
     .addItem('⚡ Générer les affectations depuis la saisie', 'genererAffectations')
     .addItem('🎨 Appliquer la charte HomeServe', 'appliquerCharte')
+    .addItem('🏠 Régénérer la page ACCUEIL', 'construireAccueil')
     .addItem('🔧 Recaler les plages RECHERCHE', 'corrigerPlagesRecherche')
     .addSeparator()
     .addItem('📧 Tester l\'envoi d\'email', 'testEnvoiEmail')

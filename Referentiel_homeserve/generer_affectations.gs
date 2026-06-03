@@ -101,6 +101,101 @@ function appliquerCharte() {
     '🎨 Charte appliquée', 6);
 }
 
+/**
+ * (Re)construit l'onglet ACCUEIL : mode d'emploi à jour incluant le workflow
+ * de génération (SAISIE_SECTEURS → ⚡ Générer), la distinction lignes générées /
+ * manuelles, et toutes les feuilles métier. Idempotent : efface puis réécrit.
+ */
+function construireAccueil() {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName('ACCUEIL') || ss.insertSheet('ACCUEIL', 0);
+  sh.clear();
+  sh.getDataRange().clearNote();
+
+  // [ligne, colonne, valeur, style]  — style ∈ {titre, soustitre, section, cle, txt, warn}
+  const L = [];
+  const put = (r, c, v, style) => L.push({ r: r, c: c, v: v, s: style });
+
+  put(2, 2, "Référentiel d'affectation commerciale", 'titre');
+  put(3, 2, 'HomeServe Énergies Services', 'soustitre');
+
+  put(5, 2, "Comment ça marche (dans l'ordre)", 'section');
+  put(6, 2, '1️⃣ SAISIE_SECTEURS', 'cle');
+  put(6, 3, "POINT D'ENTRÉE. Une ligne = une règle : Filiale, Commercial, Type de zone (CP ou COMMUNES), Zone, Produits. C'est ici qu'on saisit tout — jamais directement dans AFFECTATIONS_COMMUNES.", 'txt');
+  put(7, 2, '2️⃣ ⚙️ Transferts → ⚡ Générer', 'cle');
+  put(7, 3, "Le menu déploie les règles de SAISIE_SECTEURS en lignes communes dans AFFECTATIONS_COMMUNES et PRODUITS_COMMERCIAUX (colonne Origine = « généré »). Recale aussi automatiquement les plages de RECHERCHE.", 'txt');
+  put(8, 2, '3️⃣ 🔍 RECHERCHE', 'cle');
+  put(8, 3, "Pour savoir qui couvre une commune × produit : renseignez Filiale, CP, Ville, Produit (les seules cellules modifiables). La réponse arrive automatiquement (titulaire + remplaçant si transfert actif).", 'txt');
+
+  put(10, 2, 'Les feuilles de données', 'section');
+  put(11, 2, '📋 AFFECTATIONS_COMMUNES', 'cle');
+  put(11, 3, "Référentiel principal : 1 ligne = 1 commune affectée à 1 commercial (Principal / Co-affecté). ⚠️ Les lignes « généré » sont écrasées à chaque génération — pour les corriger, modifiez la règle dans SAISIE_SECTEURS, pas la ligne. Colonnes Clé / Rang / Origine calculées automatiquement (verrouillées).", 'txt');
+  put(12, 2, '🔧 PRODUITS_COMMERCIAUX', 'cle');
+  put(12, 3, "Quels produits chaque commercial peut traiter. Généré depuis SAISIE_SECTEURS. Colonnes Rang / Origine calculées (verrouillées).", 'txt');
+  put(13, 2, '⚠️ EXCEPTIONS_PRODUITS', 'cle');
+  put(13, 3, "Cas spécifiques : pour cette commune × ce produit, on bascule sur un autre commercial (sans toucher au principal). Saisie manuelle.", 'txt');
+  put(14, 2, '🔄 TRANSFERTS', 'cle');
+  put(14, 3, "Remplacements temporaires ou définitifs (congés, départ, absence) avec dates de début/fin. Bascule automatique dans RECHERCHE. Saisie manuelle.", 'txt');
+
+  put(16, 2, 'Les feuilles de pilotage & config', 'section');
+  put(17, 2, '🗺️ TRANSFERTS EN COURS', 'cle');
+  put(17, 3, "Tableau de bord des transferts actifs aujourd'hui (calculé automatiquement par requête sur TRANSFERTS). En lecture seule.", 'txt');
+  put(18, 2, '📧 CONTACTS', 'cle');
+  put(18, 3, "Destinataires des emails de notification envoyés automatiquement à chaque nouveau transfert.", 'txt');
+  put(19, 2, '⚙️ PARAMETRES', 'cle');
+  put(19, 3, "Listes de référence (régions, filiales, produits, motifs…). À mettre à jour pour faire évoluer les listes déroulantes.", 'txt');
+
+  put(21, 2, 'Bon à savoir', 'section');
+  put(22, 2, 'Lignes « généré » vs manuelles', 'cle');
+  put(22, 3, "La colonne Origine distingue les lignes créées par la génération (« généré », écrasées à chaque relance) des lignes ajoutées à la main (Origine vide, conservées). Ne modifiez jamais une ligne « généré » directement.", 'warn');
+  put(23, 2, 'Colonnes verrouillées', 'cle');
+  put(23, 3, "Les colonnes calculées (clés, rangs, origines) et les intitulés sont protégés contre les modifications accidentelles via ⚙️ Transferts → 🔐 Verrouiller les colonnes calculées.", 'txt');
+
+  put(25, 2, 'Syntaxe CP dans TRANSFERTS (colonne CP)', 'section');
+  const cp = [
+    ['Vide ou "Tous"', 'Le transfert couvre toutes les communes de la filiale'],
+    ['33000', 'Un seul CP spécifique'],
+    ['33000, 33100, 33200', 'Liste de CP séparés par virgules'],
+    ['33000-33999', 'Tranche : tous les CP de 33000 à 33999'],
+    ['33000-33500, 35000', 'Mix tranche + valeur ponctuelle'],
+    ['Copié depuis Excel', 'Sauts de ligne acceptés : copier-coller direct depuis une colonne Excel'],
+  ];
+  cp.forEach((row, i) => { put(26 + i, 2, row[0], 'cle'); put(26 + i, 3, row[1], 'txt'); });
+
+  put(33, 2, "💡 Cas d'usage typique", 'section');
+  put(34, 2, "Répartir les CP d'un commercial absent entre 2 remplaçants → créez 2 lignes de transfert :", 'txt');
+  put(35, 2, 'Ligne 1 :', 'cle');
+  put(35, 3, 'Filiale | Ludovic | → Eric | Du-Au | Tous | 33000-33999', 'txt');
+  put(36, 2, 'Ligne 2 :', 'cle');
+  put(36, 3, 'Filiale | Ludovic | → Fabien | Du-Au | Tous | 32000-32999, 47000', 'txt');
+
+  // Écriture
+  L.forEach(item => sh.getRange(item.r, item.c).setValue(item.v));
+
+  // Styles
+  L.forEach(item => {
+    const cell = sh.getRange(item.r, item.c);
+    switch (item.s) {
+      case 'titre':    cell.setFontSize(18).setFontWeight('bold').setFontColor(CHARTE.ROUGE); break;
+      case 'soustitre':cell.setFontSize(11).setFontColor('#666666'); break;
+      case 'section':  cell.setFontSize(13).setFontWeight('bold').setFontColor(CHARTE.BLANC).setBackground(CHARTE.ROUGE); break;
+      case 'cle':      cell.setFontWeight('bold').setVerticalAlignment('top'); break;
+      case 'warn':     cell.setWrap(true).setVerticalAlignment('top').setFontColor('#B71C1C'); break;
+      default:         cell.setWrap(true).setVerticalAlignment('top'); break;
+    }
+  });
+
+  // Mise en page
+  sh.setColumnWidth(1, 30);
+  sh.setColumnWidth(2, 230);
+  sh.setColumnWidth(3, 720);
+  sh.setHiddenGridlines(true);
+  sh.setTabColor(CHARTE.ROUGE);
+
+  ss.toast('Onglet ACCUEIL régénéré.', '✅ ACCUEIL à jour', 5);
+}
+
+
 // ============================================================
 // 1. CRÉATION DE LA FEUILLE DE SAISIE
 // ============================================================
