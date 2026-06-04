@@ -751,7 +751,7 @@ function protegerColonnesCalculees() {
   // ---------------------------------------------------------------
   const ADMINS = [
     'max.poulain@homeserve.fr',
-    // 'collaborateur@homeserve.fr',
+    'jeremy.riche@homeserve.fr',
   ];
 
   // --- Colonnes calculées dans les feuilles de saisie ---
