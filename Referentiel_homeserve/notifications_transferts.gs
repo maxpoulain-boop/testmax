@@ -744,6 +744,16 @@ function protegerColonnesCalculees() {
   const moi = Session.getEffectiveUser();
   let count = 0;
 
+  // ---------------------------------------------------------------
+  // Emails autorisés à modifier les zones protégées.
+  // Ajouter/supprimer des collaborateurs ici, puis relancer
+  // ⚙️ Transferts → 🔐 Verrouiller les colonnes calculées.
+  // ---------------------------------------------------------------
+  const ADMINS = [
+    'max.poulain@homeserve.fr',
+    // 'collaborateur@homeserve.fr',
+  ];
+
   // --- Colonnes calculées dans les feuilles de saisie ---
   // description → [nomFeuille, colonnes à verrouiller (lettres)]
   const COLS_CALCULEES = [
@@ -768,11 +778,16 @@ function protegerColonnesCalculees() {
     'EXCEPTIONS_PRODUITS',
   ];
 
-  // Petit utilitaire : crée une protection de plage réservée à l'admin
+  // Petit utilitaire : crée une protection de plage accessible uniquement aux ADMINS
   const verrouiller = (plage, desc) => {
     const prot = plage.protect().setDescription(desc);
     prot.addEditor(moi);
-    prot.removeEditors(prot.getEditors().filter(e => e.getEmail() !== moi.getEmail()));
+    ADMINS.forEach(email => { try { prot.addEditor(email); } catch(e) {} });
+    prot.removeEditors(
+      prot.getEditors().filter(e =>
+        e.getEmail() !== moi.getEmail() && ADMINS.indexOf(e.getEmail()) === -1
+      )
+    );
     if (prot.canDomainEdit()) prot.setDomainEdit(false);
     count++;
   };
@@ -814,7 +829,12 @@ function protegerColonnesCalculees() {
     rech.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(p => p.remove());
     const prot = rech.protect().setDescription('Outil de recherche — modifier uniquement les cellules de saisie (C6 à C9)');
     prot.addEditor(moi);
-    prot.removeEditors(prot.getEditors().filter(e => e.getEmail() !== moi.getEmail()));
+    ADMINS.forEach(email => { try { prot.addEditor(email); } catch(e) {} });
+    prot.removeEditors(
+      prot.getEditors().filter(e =>
+        e.getEmail() !== moi.getEmail() && ADMINS.indexOf(e.getEmail()) === -1
+      )
+    );
     if (prot.canDomainEdit()) prot.setDomainEdit(false);
     // Exclure C6:C9 de la protection (les utilisateurs peuvent les modifier)
     prot.setUnprotectedRanges([rech.getRange('C6:C9')]);
