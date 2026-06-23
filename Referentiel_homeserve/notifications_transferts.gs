@@ -80,6 +80,7 @@ function onOpen() {
     .addItem('🎨 Appliquer la charte HomeServe', 'appliquerCharte')
     .addItem('🏠 Régénérer la page ACCUEIL', 'construireAccueil')
     .addItem('🔧 Recaler les plages RECHERCHE', 'corrigerPlagesRecherche')
+    .addItem('🌍 Diagnostiquer les régions manquantes', 'diagnostiquerRegionsManquantes')
     .addSeparator()
     .addItem('📧 Tester l\'envoi d\'email', 'testEnvoiEmail')
     .addItem('👥 Voir les destinataires configurés', 'afficherDestinataires')

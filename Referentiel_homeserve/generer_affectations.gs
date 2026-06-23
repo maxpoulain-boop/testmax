@@ -332,6 +332,82 @@ function carteRegionsDepuisAffectations_(affectSheet, carte) {
   }
 }
 
+/**
+ * DIAGNOSTIC — Régions manquantes.
+ *
+ * Scanne le résultat généré dans AFFECTATIONS_COMMUNES et liste toutes les
+ * lignes dont la colonne A (Région) est vide. Ce sont les seules lignes
+ * réellement à risque (cas 3 : ni COMMERCIAL_REGION, ni FILIALE_REGION, ni
+ * région DPT_SOURCE n'ont pu renseigner la région).
+ *
+ * Le résultat est regroupé par Département (2 premiers chiffres du CP) puis
+ * par Filiale, avec le nombre de communes concernées. Il indique aussi si la
+ * filiale est présente dans FILIALE_REGION (auquel cas il suffit de vérifier
+ * l'orthographe exacte de la filiale dans SAISIE_SECTEURS).
+ */
+function diagnostiquerRegionsManquantes() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const affectSheet = ss.getSheetByName(GEN.AFFECT);
+  if (!affectSheet) {
+    ui.alert('Onglet ' + GEN.AFFECT + ' introuvable.', '', ui.ButtonSet.OK);
+    return;
+  }
+  const last = affectSheet.getLastRow();
+  if (last < 2) { ui.alert('AFFECTATIONS_COMMUNES est vide.', '', ui.ButtonSet.OK); return; }
+
+  // A=Région | B=Filiale | C=CP | D=Ville | E=Commercial
+  const data = affectSheet.getRange(2, 1, last - 1, 5).getValues();
+
+  // groupes : "dep|filiale" → { dep, filiale, count, exemples:[cp/ville] }
+  const groupes = {};
+  let totalVides = 0;
+  for (let i = 0; i < data.length; i++) {
+    const region  = String(data[i][0] || '').trim();
+    if (region) continue;                       // région présente → OK
+    const filiale = String(data[i][1] || '').trim() || '(sans filiale)';
+    const cp      = normaliserCP(data[i][2]);
+    const ville   = String(data[i][3] || '').trim();
+    if (!cp) continue;
+    const dep = cp.substring(0, 2);
+    const cle = dep + '|' + filiale;
+    if (!groupes[cle]) groupes[cle] = { dep: dep, filiale: filiale, count: 0, ex: [] };
+    groupes[cle].count++;
+    if (groupes[cle].ex.length < 3) groupes[cle].ex.push(cp + ' ' + ville);
+    totalVides++;
+  }
+
+  if (totalVides === 0) {
+    ui.alert('✅ Aucune région manquante',
+      'Toutes les lignes de AFFECTATIONS_COMMUNES ont une région renseignée.',
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  // Filiales connues du référentiel fixe (pour orienter la correction)
+  const filialesFixes = {};
+  Object.keys(FILIALE_REGION).forEach(f => filialesFixes[f] = true);
+
+  const lignes = Object.keys(groupes)
+    .map(k => groupes[k])
+    .sort((a, b) => (a.dep === b.dep) ? b.count - a.count : a.dep.localeCompare(b.dep));
+
+  let msg = totalVides + ' commune(s) sans région, sur ' +
+            lignes.length + ' couple(s) Département/Filiale :\n\n';
+  lignes.forEach(g => {
+    const connue = filialesFixes[g.filiale]
+      ? ' [filiale dans FILIALE_REGION → vérifier l\'orthographe]'
+      : ' [filiale absente de FILIALE_REGION → renseigner la région DPT_SOURCE]';
+    msg += '• Dép ' + g.dep + ' — ' + g.filiale + ' : ' + g.count +
+           ' commune(s)' + connue + '\n   ex. ' + g.ex.join(', ') + '\n';
+  });
+  msg += '\nRappel : la région d\'une ligne = COMMERCIAL_REGION, sinon ' +
+         'FILIALE_REGION, sinon région DPT_SOURCE. Régénère après correction.';
+
+  Logger.log(msg);
+  ui.alert('🌍 Régions manquantes', msg, ui.ButtonSet.OK);
+}
+
 /** Liste des produits du référentiel (pour expansion de "Tous"). */
 function listeProduits_(ss) {
   const params = ss.getSheetByName(GEN.PARAMS);
