@@ -68,6 +68,20 @@ const FILIALE_REGION = {
   'SMEC':              'NORD-IDF',
 };
 
+// Région par COMMERCIAL. Priorité la plus haute (avant FILIALE_REGION et la
+// région issue de DPT_SOURCE). Utile pour une filiale multi-régions comme
+// HomeServe Rénov' : chaque CTS est rattaché à sa propre région, et le
+// "Commercial Sédentaire" (vente téléphonique nationale) est forcé sur FRANCE.
+// Pensez à ajouter la région "FRANCE" dans PARAMETRES si elle est utilisée.
+const COMMERCIAL_REGION = {
+  'Anis BENCHEIKH':       'NORMANDIE',
+  'Christopher RAGOT':    'NORMANDIE',
+  'Sébastien COUDERC':    'Grand OUEST',
+  'Hakim BELAALA':        'Grand OUEST',
+  'Sébastien BURON':      'Grand OUEST',
+  'Commercial Sédentaire':'FRANCE',
+};
+
 // ============================================================
 // 0. CHARTE GRAPHIQUE HOMESERVE
 // ============================================================
@@ -492,10 +506,13 @@ function genererAffectations() {
       const prio = nb >= 2 ? 2 : 1;
       const cleCommune = filiale + '-' + c.cp + '-' + c.ville;  // ex. EGS Energies-6000-NICE
       clesCouvertes[String(filiale).trim().toUpperCase() + '|' + c.cpNorm + '|' + normaliserNomCommune_(c.ville)] = true;
-      // Région = celle de la FILIALE (référentiel fixe), avec repli sur la région
-      // de la commune issue de DPT_SOURCE si la filiale n'est pas répertoriée.
-      const region = FILIALE_REGION[String(filiale).trim()] || c.region;
+      // Région, par ordre de priorité :
+      //   1) COMMERCIAL_REGION (par commercial, ex. CTS/CS de HomeServe Rénov')
+      //   2) FILIALE_REGION (référentiel fixe par filiale)
+      //   3) région de la commune issue de DPT_SOURCE (repli)
+      const regionFiliale = FILIALE_REGION[String(filiale).trim()] || c.region;
       liste.forEach((x, idx) => {
+        const region = COMMERCIAL_REGION[String(x.nom).trim()] || regionFiliale;
         // A Région | B Filiale | C CP | D Ville | E Commercial | F Secteur | G Actif
         // H Commentaire | I Clé commune | J Rôle | K Priorité | L Rang | M Origine
         lignesAffect.push([
