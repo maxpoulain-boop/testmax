@@ -761,27 +761,28 @@ function corrigerPlagesRecherche_() {
   const plage = rech.getDataRange();
   const formules = plage.getFormulas();
   let nbCellules = 0;
+  let modifie = false;
 
   for (let r = 0; r < formules.length; r++) {
     for (let c = 0; c < formules[r].length; c++) {
       const f = formules[r][c];
       if (!f || f.charAt(0) !== '=') continue;
-      let modifiee = f, touche = false;
+      let modifiee = f;
       Object.keys(cibles).forEach(nom => {
         const cible = cibles[nom];
         // Capture SHEET!$COL$2:$COL$<fin> et remplace <fin> par la cible
         const re = new RegExp('(' + nom + '!\\$?[A-Z]+\\$?2:\\$?[A-Z]+\\$?)(\\d+)', 'g');
-        modifiee = modifiee.replace(re, (m, prefixe, fin) => {
-          if (parseInt(fin, 10) !== cible) touche = true;
-          return prefixe + cible;
-        });
+        modifiee = modifiee.replace(re, (_, prefixe, fin) => prefixe + cible);
       });
-      if (touche && modifiee !== f) {
-        plage.getCell(r + 1, c + 1).setFormula(modifiee);
+      if (modifiee !== f) {
+        formules[r][c] = modifiee;
         nbCellules++;
+        modifie = true;
       }
     }
   }
+  // Écriture groupée : un seul appel API → un seul recalcul au lieu de N
+  if (modifie) plage.setFormulas(formules);
   return { nbCellules: nbCellules, cibles: cibles };
 }
 
