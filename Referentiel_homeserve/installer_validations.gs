@@ -116,6 +116,7 @@ function installerToutesLesValidations() {
     total += installer_PRODUITS_(ss, logs);
     total += installer_EXCEPTIONS_(ss, logs);
     total += installer_CONTACTS_(ss, logs);
+    total += installer_SAISIE_(ss, logs);
 
     ss.toast(`${total} validations installées`, '✓ Listes déroulantes opérationnelles', 8);
     SpreadsheetApp.getUi().alert(
@@ -293,6 +294,36 @@ function installer_CONTACTS_(ss, logs) {
 
   logs.push('✓ CONTACTS : 1 validation (mode TEST/PROD)');
   return 1;
+}
+
+// ============================================================
+// SAISIE_SECTEURS
+// ============================================================
+// Point d'entrée des règles. La liste déroulante Filiale (col A) doit être
+// rafraîchie ici — sinon une filiale ajoutée dans PARAMETRES n'apparaît jamais
+// dans le menu déroulant de saisie. La validation Type de zone (col C) est
+// figée sur CP/COMMUNES. Les deux autorisent les valeurs hors-liste pour ne
+// jamais bloquer un collage.
+function installer_SAISIE_(ss, logs) {
+  const sheet = ss.getSheetByName('SAISIE_SECTEURS');
+  if (!sheet) { logs.push('✗ SAISIE_SECTEURS manquante'); return 0; }
+
+  let count = 0;
+
+  // A = Filiale (liste de référence, hors-liste autorisé pour le collage)
+  sheet.getRange('A2:A500').setDataValidation(regleListe_(ss, 'filiales', true));
+  count++;
+
+  // C = Type de zone (CP | COMMUNES)
+  sheet.getRange('C2:C500').setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(['CP', 'COMMUNES'], true)
+      .setAllowInvalid(true).build()
+  );
+  count++;
+
+  logs.push(`✓ SAISIE_SECTEURS : ${count} validations (Filiale + Type de zone)`);
+  return count;
 }
 
 // ============================================================
