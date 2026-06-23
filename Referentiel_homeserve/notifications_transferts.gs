@@ -81,6 +81,7 @@ function onOpen() {
     .addItem('🏠 Régénérer la page ACCUEIL', 'construireAccueil')
     .addItem('🔧 Recaler les plages RECHERCHE', 'corrigerPlagesRecherche')
     .addItem('🌍 Diagnostiquer les régions manquantes', 'diagnostiquerRegionsManquantes')
+    .addItem('✍️ Développer ST/STE → SAINT/SAINTE (DPT_SOURCE)', 'developperSaintDptSource')
     .addSeparator()
     .addItem('📧 Tester l\'envoi d\'email', 'testEnvoiEmail')
     .addItem('👥 Voir les destinataires configurés', 'afficherDestinataires')

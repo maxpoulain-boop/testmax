@@ -294,12 +294,17 @@ function creerFeuilleSaisie() {
 // 2. UTILITAIRES
 // ============================================================
 
-/** Normalise un nom de commune pour comparaison : majuscules, sans accents ni ponctuation. */
+/** Normalise un nom de commune pour comparaison : majuscules, sans accents ni
+ *  ponctuation. D\u00e9veloppe aussi les abr\u00e9viations ST\u2192SAINT et STE\u2192SAINTE pour
+ *  que les deux formes ("ST MALO" / "SAINT MALO") soient toujours \u00e9quivalentes
+ *  lors du matching, quelle que soit la forme saisie dans SAISIE_SECTEURS. */
 function normaliserNomCommune_(x) {
   if (x === null || x === undefined) return '';
   return String(x).toUpperCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // accents
-    .replace(/[^A-Z0-9]+/g, ' ').trim();
+    .replace(/[^A-Z0-9]+/g, ' ').trim()
+    .replace(/\bSTE\b/g, 'SAINTE')
+    .replace(/\bST\b/g, 'SAINT');
 }
 
 /** Carte département → région, déduite de DPT_SOURCE. */
@@ -330,6 +335,68 @@ function carteRegionsDepuisAffectations_(affectSheet, carte) {
     const dep = cp.substring(0, 2);
     if (!carte[dep]) carte[dep] = reg;
   }
+}
+
+/**
+ * OUTIL — Développe les abréviations ST/STE en SAINT/SAINTE dans la colonne
+ * "Nom de la commune" (col F) de DPT_SOURCE.
+ *
+ * Ne touche QUE les tokens isolés "ST" et "STE" (entourés d'espaces/tirets),
+ * pour ne jamais transformer un mot comme STRASBOURG. La casse de remplacement
+ * suit celle du token trouvé (ST→SAINT, St→Saint). N'écrit que les lignes
+ * réellement modifiées et n'altère aucune autre colonne.
+ */
+function developperSaintDptSource() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const dptSheet = ss.getSheetByName(GEN.DPT);
+  if (!dptSheet) { ui.alert('Onglet ' + GEN.DPT + ' introuvable.', '', ui.ButtonSet.OK); return; }
+
+  const last = dptSheet.getLastRow();
+  if (last < 2) { ui.alert(GEN.DPT + ' est vide.', '', ui.ButtonSet.OK); return; }
+
+  // Colonne F = Nom de la commune (index 6, 1-based)
+  const COL_NOM = 6;
+  const plage = dptSheet.getRange(2, COL_NOM, last - 1, 1);
+  const noms = plage.getValues();
+
+  const casseAdaptee = function (token, motComplet) {
+    // token = "ST" / "STE" trouvé ; motComplet = "SAINT" / "SAINTE"
+    if (token === token.toUpperCase()) return motComplet.toUpperCase();        // ST → SAINT
+    if (token[0] === token[0].toUpperCase()) {                                  // St → Saint
+      return motComplet.charAt(0).toUpperCase() + motComplet.slice(1).toLowerCase();
+    }
+    return motComplet.toLowerCase();                                            // st → saint
+  };
+
+  let nbModif = 0;
+  for (let i = 0; i < noms.length; i++) {
+    const orig = noms[i][0];
+    if (orig === null || orig === undefined || orig === '') continue;
+    const txt = String(orig);
+    // STE d'abord (sinon "ST" attraperait le préfixe), puis ST. \b gère
+    // début/fin de mot, espaces ET tirets (ST-MALO, STE FOY…).
+    let modifie = txt
+      .replace(/\bSTE\b\.?/gi, m => casseAdaptee(m.replace(/\.$/, ''), 'Sainte'))
+      .replace(/\bST\b\.?/gi,  m => casseAdaptee(m.replace(/\.$/, ''), 'Saint'));
+    if (modifie !== txt) { noms[i][0] = modifie; nbModif++; }
+  }
+
+  if (nbModif === 0) {
+    ui.alert('Aucune abréviation ST/STE trouvée dans ' + GEN.DPT + ' (col F).',
+      '', ui.ButtonSet.OK);
+    return;
+  }
+
+  const rep = ui.alert('Développer ST/STE dans ' + GEN.DPT,
+    nbModif + ' nom(s) de commune vont être réécrits (ST→SAINT, STE→SAINTE).\n\n' +
+    'Continuer ?', ui.ButtonSet.YES_NO);
+  if (rep !== ui.Button.YES) { ss.toast('Annulé.'); return; }
+
+  plage.setValues(noms);
+  ui.alert('✅ Terminé', nbModif + ' nom(s) de commune mis à jour dans ' + GEN.DPT +
+    '.\n\nPense à relancer ⚡ Générer les affectations pour propager les nouveaux ' +
+    'noms dans AFFECTATIONS_COMMUNES.', ui.ButtonSet.OK);
 }
 
 /**
