@@ -319,6 +319,72 @@ function carteRegions_(dptValues) {
 }
 
 /**
+ * OUTIL — Recale les plages figées des formules de _DDL_TRANSFERTS.
+ *
+ * Les listes déroulantes en cascade des colonnes C/D de TRANSFERTS lisent
+ * _DDL_TRANSFERTS, dont les formules pointent vers une plage FIGÉE de
+ * _COMMERCIAUX_PAR_FILIALE_H (ex. $A$2:$A$16). Quand on ajoute une filiale
+ * SOUS cette plage (VB Gaz, SMEC, HomeServe Rénov'…), EQUIV ne la trouve plus
+ * et la liste des commerciaux reste vide.
+ *
+ * Cette fonction relit le vrai nombre de lignes de _COMMERCIAUX_PAR_FILIALE_H
+ * et réécrit la dernière ligne de CHAQUE plage
+ * '_COMMERCIAUX_PAR_FILIALE_H'!$X$2:$Y$N présente dans les formules. À
+ * relancer après chaque ajout de filiale.
+ *
+ * IMPORTANT : on n'écrit QUE les cellules contenant réellement une formule à
+ * corriger, via setFormula() cellule par cellule (jamais setFormulas() sur
+ * toute la plage : getFormulas() renvoie '' pour les cellules vides/texte et
+ * un setFormulas() global les réécrirait).
+ */
+function corrigerPlagesDDL() {
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const ddl = ss.getSheetByName('_DDL_TRANSFERTS');
+  const comm = ss.getSheetByName('_COMMERCIAUX_PAR_FILIALE_H');
+  if (!ddl || !comm) {
+    ui.alert('Onglet manquant',
+      'Vérifie la présence de _DDL_TRANSFERTS et _COMMERCIAUX_PAR_FILIALE_H.',
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  const cible = comm.getLastRow();          // vraie dernière ligne du référentiel
+  const plage = ddl.getDataRange();
+  const formules = plage.getFormulas();
+
+  // Cible toute plage '_COMMERCIAUX_PAR_FILIALE_H'!$<col>$2:$<col>$<num>
+  const re = new RegExp(
+    "('_COMMERCIAUX_PAR_FILIALE_H'!\\$?[A-Z]+\\$?2:\\$?[A-Z]+\\$?)(\\d+)", 'g');
+
+  let nbCellules = 0;
+  for (let r = 0; r < formules.length; r++) {
+    for (let c = 0; c < formules[r].length; c++) {
+      const f = formules[r][c];
+      if (!f || f.charAt(0) !== '=') continue;
+      let touche = false;
+      const modifiee = f.replace(re, (m, prefixe, fin) => {
+        if (parseInt(fin, 10) !== cible) touche = true;
+        return prefixe + cible;
+      });
+      if (touche && modifiee !== f) {
+        plage.getCell(r + 1, c + 1).setFormula(modifiee);
+        nbCellules++;
+      }
+    }
+  }
+
+  ui.alert('🔧 Recalage _DDL_TRANSFERTS',
+    nbCellules + ' formule(s) recalée(s) sur la ligne ' + cible +
+    ' (dernière filiale de _COMMERCIAUX_PAR_FILIALE_H).\n\n' +
+    (nbCellules === 0
+      ? 'Aucune plage figée obsolète trouvée : tout était déjà à jour.'
+      : 'Les listes déroulantes des filiales ajoutées récemment devraient de ' +
+        'nouveau afficher leurs commerciaux.'),
+    ui.ButtonSet.OK);
+}
+
+/**
  * Enrichit la carte département → région avec les régions déjà présentes dans
  * AFFECTATIONS_COMMUNES (A = Région, C = CP). N'écrase PAS DPT_SOURCE : ne
  * complète que les départements encore inconnus. Le département est déduit des

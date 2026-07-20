@@ -80,6 +80,7 @@ function onOpen() {
     .addItem('🎨 Appliquer la charte HomeServe', 'appliquerCharte')
     .addItem('🏠 Régénérer la page ACCUEIL', 'construireAccueil')
     .addItem('🔧 Recaler les plages RECHERCHE', 'corrigerPlagesRecherche')
+    .addItem('🔧 Recaler les cascades TRANSFERTS (_DDL)', 'corrigerPlagesDDL')
     .addItem('🌍 Diagnostiquer les régions manquantes', 'diagnostiquerRegionsManquantes')
     .addItem('✍️ Développer ST/STE → SAINT/SAINTE (DPT_SOURCE)', 'developperSaintDptSource')
     .addSeparator()
